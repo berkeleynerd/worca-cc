@@ -782,6 +782,7 @@ async function attachAndDrive(orch, flags, start) {
         orch.answer(id, answer);
       } else if (kind === 'approval') {
         out(c('yellow', c('bold', 'Approval needed:')));
+        if (payload.approval && payload.approval.summary) out(`\n${payload.approval.summary}\n`);
         const payload = await askClarify(rl, questions || []);
         orch.answer(id, payload);
       } else if (kind === 'questions') {

@@ -87,13 +87,34 @@ const MAX_QUESTION_ROUNDS = 3;
  *  command and the API, or the question card's one answer naming a choice). Anything else leaves the ask open. */
 export const APPROVAL_ASK_KIND = 'approval';
 export const APPROVAL_CHOICES = Object.freeze({ approve: 'Approve', stop: 'Stop the run' });
-export const approvalAnswer = (raw) => {
+export const approvalAnswer = (raw, choices = APPROVAL_CHOICES) => {
   if (raw && (raw.decision === 'approve' || raw.decision === 'stop')) return { decision: raw.decision };
   const choice = raw && Array.isArray(raw.answers) && raw.answers.length === 1 ? String(raw.answers[0]?.choice ?? '').trim() : '';
-  if (choice === APPROVAL_CHOICES.approve) return { decision: 'approve' };
-  if (choice === APPROVAL_CHOICES.stop) return { decision: 'stop' };
+  if (choice === choices.approve) return { decision: 'approve' };
+  if (choice === choices.stop) return { decision: 'stop' };
   return null;
 };
+/** A gate's own wording (`config.approve`: question, approveLabel, stopLabel), else the defaults. */
+export const approvalWording = (approve, label, file) => {
+  const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+  const choices = { approve: text(approve?.approveLabel) || APPROVAL_CHOICES.approve, stop: text(approve?.stopLabel) || APPROVAL_CHOICES.stop };
+  if (choices.approve === choices.stop) choices.stop = APPROVAL_CHOICES.stop;
+  return { choices, question: text(approve?.question)
+    || `${label} is waiting for your approval before the run goes on.${file ? ` Read ${file} first.` : ''}` };
+};
+/** The summary a gate shows on its card: the text of `config.approve.summaryPort`'s file, which sits beside the
+ *  held file. Missing, unreadable or empty: no summary (the gate still asks). Capped, since it rides a socket. */
+export const APPROVAL_SUMMARY_MAX = 8000;
+export async function approvalSummary(approve, outputs, heldFile, heldPort) {
+  const port = typeof approve?.summaryPort === 'string' ? approve.summaryPort : '';
+  if (!port || !heldFile) return '';
+  const name = port === heldPort ? basename(heldFile) : (outputs || []).find((o) => o && o.id === port)?.filename;
+  if (!name || /[{}/\\]/.test(name)) return '';
+  try {
+    const text = (await readFile(join(dirname(heldFile), name), 'utf8')).trim();
+    return text.length > APPROVAL_SUMMARY_MAX ? `${text.slice(0, APPROVAL_SUMMARY_MAX)}\n[cut: the file is longer]` : text;
+  } catch { return ''; }
+}
 export const gateAnswer = (raw) => (raw && (raw.decision === 'another' || raw.decision === 'continue') ? { decision: raw.decision } : null);
 
 function abortError(msg = 'aborted') {
@@ -1310,13 +1331,17 @@ export class GraphOrchestrator extends RunHarness {
     const nc = (this.resolved?.nodeCtx || {})[q.nodeId];
     const label = nc?.meta?.displayName || nc?.key || q.nodeId;
     const file = q.approval?.file || null;
-    const questions = [{ id: 'approval', allowFreeText: false,
-      question: `${label} is waiting for your approval before the run goes on.${file ? ` Read ${file} first.` : ''}`,
-      options: [APPROVAL_CHOICES.approve, APPROVAL_CHOICES.stop] }];
-    return this._enqueueAsk(() => this._ask({ id: q.id, kind: APPROVAL_ASK_KIND, nodeId: q.nodeId, executionId: q.executionId,
-      questions, approval: q.approval, agent: label, validate: approvalAnswer })).then(
+    const approve = nc?.config?.approve || null;
+    const { choices, question } = approvalWording(approve, label, file);
+    const validate = (raw) => approvalAnswer(raw, choices);
+    const questions = [{ id: 'approval', allowFreeText: false, question, options: [choices.approve, choices.stop] }];
+    return this._enqueueAsk(async () => {
+      const summary = await approvalSummary(approve, nc?.meta?.outputs || nc?.outputs, file, q.approval?.port);
+      return this._ask({ id: q.id, kind: APPROVAL_ASK_KIND, nodeId: q.nodeId, executionId: q.executionId,
+        questions, approval: { ...q.approval, ...(summary ? { summary } : {}) }, agent: label, validate });
+    }).then(
       async (payload) => {
-        const decision = approvalAnswer(payload)?.decision ?? null;
+        const decision = validate(payload)?.decision ?? null;
         const by = this.answeredBy(q.id);
         await appendAudit(this.pipeline.dir, `Approval of ${label}${file ? ` (${file})` : ''}: **${decision || 'no answer'}**${byActor(by)}.`, { actor: by }).catch(() => {});
         if (decision === 'approve') return { decision: 'approve' };

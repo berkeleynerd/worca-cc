@@ -19,3 +19,19 @@ starts before the answer.
 
 `kind: "plan"` is the older stop of a *Shape it first* run (approve, ask for changes, stop); it stays
 limited to shaped runs.
+
+## Wording, summary and script nodes
+
+All optional, beside `kind` and `port`:
+
+| Field | Effect |
+| --- | --- |
+| `question` | The card's question, in place of "<step> is waiting for your approval…". |
+| `approveLabel`, `stopLabel` | The two buttons, in place of "Approve" and "Stop the run". They must differ. An answer must name the gate's own label; `worca approve` and `{decision}` work as before. |
+| `summaryPort` | An md output of the same node. Its text is shown on the card above the question (plain text, as written, up to 8,000 characters), and printed before the terminal prompt. It may be the held port itself. |
+
+A script node may carry the gate too. With a verdict and an output marked `when: blocking`, a script can
+stop for a person only when it fails: wire the clean and the blocking output into an `or` node, put the
+gate on the blocking one, and the run goes on untouched when the script is clean.
+
+A finished run that changed no file no longer offers Create PR.

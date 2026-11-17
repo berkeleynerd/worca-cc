@@ -22,7 +22,7 @@ const AWAIT_PORT_ID = 'await';
 const KNOWN_CONFIG = {
   agent: new Set(['model', 'effort', 'fanOut', 'askQuestions', 'awaitAll', 'subagentModel', 'subagentEffort',
     'approve', 'maxQuestions', 'promptHints', 'roleReview', 'timeLimitMinutes', 'idleLimitMinutes', 'verdictOptional', 'session']),
-  script: new Set(['params', 'ports', 'timeoutMs', 'awaitAll', 'mock', 'paramsPort']),
+  script: new Set(['params', 'ports', 'timeoutMs', 'awaitAll', 'mock', 'paramsPort', 'approve']),
   task: new Set(['planStoreSeed']),
   and: new Set(['arity']),
   or: new Set(['arity']),
@@ -604,8 +604,14 @@ export const RULES = [
   // the node (the held file); maxQuestions is 1..8 (the protocol cap); promptHints is a string.
   { code: 'V23', level: 'E', check({ nodes, metaOf, outputsOf }, add) {
     for (const n of nodes) {
-      if (n.kind !== 'agent' || !isObject(n.config)) continue;
-      const { approve, maxQuestions, promptHints } = n.config;
+      if ((n.kind !== 'agent' && n.kind !== 'script') || !isObject(n.config)) continue;
+      // A script node takes the plain gate only (its output held for a person); the rest is agent-only.
+      const { approve } = n.config;
+      const { maxQuestions, promptHints } = n.kind === 'agent' ? n.config : {};
+      if (n.kind === 'script' && approve !== undefined && approve?.kind !== 'approval') {
+        add(`node '${n.id}' config.approve on a script must be { kind: 'approval', port: '<output port>' }`, { nodeId: n.id });
+        continue;
+      }
       if (approve !== undefined) {
         // 'plan' is the shaped run's plan stop; 'approval' is the plain gate any workflow may place (a person
         // approves the held file or stops the run; armed in every run, never answered by --yes or Away mode).
@@ -613,6 +619,21 @@ export const RULES = [
           add(`node '${n.id}' config.approve must be { kind: 'plan' | 'approval', port: '<output port>' }`, { nodeId: n.id });
         } else if (metaOf(n.id) && !outputsOf(n.id).some((p) => p && p.id === approve.port && p.type === 'md')) {
           add(`node '${n.id}' config.approve.port '${approve.port}' is not an md output of this agent`, { nodeId: n.id });
+        }
+        // The gate's own wording (all optional): the card's question, its two button labels, and an output port of
+        // this node whose text is shown on the card as the summary to decide from.
+        if (isObject(approve)) {
+          for (const f of ['question', 'approveLabel', 'stopLabel', 'summaryPort']) {
+            if (approve[f] !== undefined && (typeof approve[f] !== 'string' || !approve[f].trim() || approve[f].length > 400)) {
+              add(`node '${n.id}' config.approve.${f} must be a non-empty string of at most 400 characters`, { nodeId: n.id });
+            }
+          }
+          if (typeof approve.approveLabel === 'string' && approve.approveLabel.trim() === (approve.stopLabel || '').trim()) {
+            add(`node '${n.id}' config.approve.approveLabel and stopLabel must differ`, { nodeId: n.id });
+          }
+          if (typeof approve.summaryPort === 'string' && metaOf(n.id) && !outputsOf(n.id).some((p) => p && p.id === approve.summaryPort && p.type === 'md')) {
+            add(`node '${n.id}' config.approve.summaryPort '${approve.summaryPort}' is not an md output of this node`, { nodeId: n.id });
+          }
         }
       }
       if (maxQuestions !== undefined && !(Number.isInteger(maxQuestions) && maxQuestions >= 1 && maxQuestions <= 8)) {

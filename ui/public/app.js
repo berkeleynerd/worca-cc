@@ -6233,6 +6233,14 @@ function renderClarifyBody(r, panel, pq) {
     answered.textContent = `${done} of ${slots.length} answered`;
   };
 
+  // An approval gate's summary (config.approve.summaryPort): what to decide from, above the question.
+  if (pq && pq.kind === 'approval' && pq.approval && typeof pq.approval.summary === 'string' && pq.approval.summary.trim()) {
+    const sum = document.createElement('div');
+    sum.className = 'approval-summary';
+    sum.textContent = pq.approval.summary;
+    panel.appendChild(sum);
+  }
+
   if (questions.length === 0) {
     const note = document.createElement('div');
     note.className = 'gate-intro';
@@ -25197,6 +25205,8 @@ function histPrEligible(p) {
   // Merged back (or still settling): the work is ON the source (head == base) and ships by Push (paintHdPush).
   // Not merged back: the work stays on its own branch, so a PR is the way to land it.
   if (p.sameAsSource && p.mergeBack?.merged !== false) return false;
+  // A finished run that changed no file (a review, a report) has nothing to open a pull request for.
+  if (p.target !== 'workspace' && p.diffFrozen && p.files === 0 && !p.added && !p.removed) return false;
   if (p.target === 'workspace') return histWsShippable(p).length > 0;
   return !!(p.survived && p.branch && p.sourceBranch);
 }
