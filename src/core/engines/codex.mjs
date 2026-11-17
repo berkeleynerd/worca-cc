@@ -718,7 +718,7 @@ export function parseLoginStatus({ code, stdout = '', stderr = '' } = {}) {
  * `{}` when it can. `signIn: false` (every model the run uses is on its own endpoint)
  * checks only that the binary runs.
  */
-export function codexPreflight({ bin = CODEX_DEFAULT_BIN, timeoutMs = 10000, signIn = true } = {}) {
+export function codexPreflight({ bin = CODEX_DEFAULT_BIN, timeoutMs = 10000, signIn = true, userProvider = codexUserProviderSpawn } = {}) {
   return new Promise((resolve) => {
     execFile(bin, ['login', 'status'], { timeout: timeoutMs }, (err, stdout, stderr) => {
       if (err && typeof err.code !== 'number') {
@@ -728,7 +728,9 @@ export function codexPreflight({ bin = CODEX_DEFAULT_BIN, timeoutMs = 10000, sig
         return;
       }
       const signedIn = parseLoginStatus({ code: err ? err.code : 0, stdout, stderr });
-      if (!signIn) resolve({});
+      // The user's own model provider (codex-user-provider.mjs) carries its sign-in on every spawn: `codex login
+      // status` knows nothing of it, so its answer does not decide.
+      if (!signIn || (signedIn !== true && userProvider())) resolve({});
       else if (signedIn === false) resolve({ refusal: `${bin} is not signed in — run \`codex login\`` });
       else if (signedIn === null) resolve({ warning: `could not tell whether ${bin} is signed in (\`codex login status\` said nothing recognizable)` });
       else resolve({});
