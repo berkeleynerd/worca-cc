@@ -97,8 +97,9 @@ test('a long engine reason is cut to 160 characters in its line; facts keep it w
 
 // Table-driven: every check's other states, one row each.
 for (const [name, over, id, state, line] of [
-  ['claude missing', { claude: fast({ ready: false, bin: null, hint: null }) }, 'claude', 'no', 'Claude Code was not found on this machine.'],
-  ['claude signed out', { claude: fast({ ready: true, auth: 'signed-out' }) }, 'claude', 'no', CLAUDE_SIGNED_OUT_HINT],
+  // Claude Code is optional here (Codex is the default harness): missing or signed out is a note, never a failed row.
+  ['claude missing', { claude: fast({ ready: false, bin: null, hint: null }) }, 'claude', 'warn', 'Claude Code was not found on this machine. Runs and chats on Codex do not need it.'],
+  ['claude signed out', { claude: fast({ ready: true, auth: 'signed-out' }) }, 'claude', 'warn', `${CLAUDE_SIGNED_OUT_HINT}. Runs and chats on Codex do not need it.`],
   ['claude unknown', { claude: fast({ ready: true, auth: 'unknown' }) }, 'claude', 'warn', "Claude Code is installed. Worca couldn't tell whether it is signed in."],
   ['git missing', { git: fast({ available: false, reason: 'not-on-path' }) }, 'git', 'no', 'Git was not found on this machine.'],
   ['git probe-failed', { git: fast({ available: false, reason: 'probe-failed' }) }, 'git', 'warn', "Git didn't answer when Worca checked it."],

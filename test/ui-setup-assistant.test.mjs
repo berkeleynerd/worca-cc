@@ -10,6 +10,7 @@ import {
   SETUP_STEPS, TEST_PASS_MS, LOGIN_RETRY_STEPS, proxyKey, initialAnswers, rolePatch, diffRows, buildApplyBody, nextGate,
   stepOfField, setupStepForSignIn, safeHttpUrl, openSetupAssistant, teamNotice, askEngineOf,
 } from '../ui/public/setup-assistant.mjs';
+import { DEFAULT_ENGINE } from '../src/shared/engine-switch.mjs';
 import { checkRows } from './helpers/rows.mjs';
 import { backdropClick, pressEscape, discardPrompt, keepEditing } from './helpers/popups.mjs';
 import { readStyleCss } from '../src/core/read-style-css.mjs';
@@ -224,7 +225,9 @@ test('pure helpers: proxyKey, initialAnswers, buildApplyBody, rolePatch, diffRow
       assert.equal('acknowledgeTerms' in buildApplyBody(s, a).access.copilot, false);
     } },
     { name: 'Chat model: answers start from askModels[askEngine]; unchanged → no models group; a pick or a clear rides as models.askModels', run: () => {
-      assert.equal(askEngineOf({}), 'claude'); assert.equal(askEngineOf({ askEngine: 'codex' }), 'codex'); assert.equal(askEngineOf({ askEngine: 'nope' }), 'claude');
+      // Unset or unknown: the default harness (Codex), as the server resolves askEngine.
+      assert.equal(DEFAULT_ENGINE, 'codex');
+      assert.equal(askEngineOf({}), 'codex'); assert.equal(askEngineOf({ askEngine: 'claude' }), 'claude'); assert.equal(askEngineOf({ askEngine: 'codex' }), 'codex'); assert.equal(askEngineOf({ askEngine: 'nope' }), 'codex');
       const s = saved({ settings: { ...SETTINGS, askEngine: 'codex', askModels: { codex: { model: 'gpt-5.5', effort: 'high' } } } });
       const a = initialAnswers({ saved: s, entry: 'rerun' });
       assert.deepEqual(a.models.askModel, { model: 'gpt-5.5', effort: 'high' });
@@ -954,8 +957,8 @@ test('Model access › Claude: Sign in again shows the terminal steps; Check aga
   } finally { h.close(); }
 });
 
-test('Models step: Default model for Chat shows what Chat uses now (Everyday), posts model + effort for Chat\'s engine, no role-test switch', async () => {
-  const settings = { ...SETTINGS, modelRoles: { claude: { everyday: { model: 'claude-haiku-5-5' } } } };
+test('Models step: Default model for Chat shows what Chat uses now (Everyday), posts model + effort for Chat\'s engine (Claude saved), no role-test switch', async () => {
+  const settings = { ...SETTINGS, askEngine: 'claude', runEngine: 'claude', modelRoles: { claude: { everyday: { model: 'claude-haiku-5-5' } } } };
   const h = await open({ entry: 'rerun', settings, routes: { '/api/setup/apply': reply({ id: 'stp_1', steps: STEPS3 }, 202) } });
   try {
     await h.goTo('models');
@@ -975,9 +978,26 @@ test('Models step: Default model for Chat shows what Chat uses now (Everyday), p
   } finally { h.close(); }
 });
 
+test('Models step: with no Chat engine and no run engine saved, the Chat field and the roles are the default harness\'s (Codex)', async () => {
+  const models = [...CATALOG, { id: 'gpt-6-sol', label: 'GPT-6 Sol', engine: 'codex', efforts: ['low', 'medium', 'high'] }];
+  const h = await open({ entry: 'rerun', routes: { '/api/config': reply({ models }), '/api/setup/apply': reply({ id: 'stp_1', steps: STEPS3 }, 202) } });
+  try {
+    await h.goTo('models');
+    assert.equal(h.$('.inherit-field[data-setting="models.claude.ask"]'), null, 'no Claude Chat field');
+    const sel = h.$('.inherit-field[data-setting="models.codex.ask"] .inherit-model');
+    assert.ok(sel, 'the Chat field is Codex\'s');
+    assert.equal(sel.dataset.saField, 'models.askModels.codex');
+    assert.ok(h.$('.inherit-field[data-setting="models.codex.roles.everyday"]'), 'the roles shown are Codex\'s');
+    await h.pick(sel, 'gpt-6-sol');
+    await h.goTo('review');
+    await h.click('.sa-next');
+    assert.deepEqual(h.applies()[0].body.models, { askModels: { codex: { model: 'gpt-6-sol' } } });
+  } finally { h.close(); }
+});
+
 test('Models step: the Chat empty choice tracks the Everyday pick live; a Copilot model to import picked for Chat is imported', async () => {
   const copilot = { connected: true, accountType: 'individual', login: 'jdoe' };
-  const h = await open({ entry: 'rerun', providers: { ...PROVIDERS, copilot },
+  const h = await open({ entry: 'rerun', providers: { ...PROVIDERS, copilot }, settings: { ...SETTINGS, askEngine: 'claude', runEngine: 'claude' },
     routes: { ...COPILOT_ROUTES(), '/api/setup/apply': reply({ id: 'stp_1', steps: STEPS3 }, 202) } });
   try {
     await h.goTo('access');
