@@ -23,6 +23,10 @@
  *             there. src/core/engines/chat.mjs refuses to load when this and the descriptors disagree. Kept here, not in
  *             the adapters, because the browser and src/core/model-env.mjs read it and neither may import an adapter.
  */
+/** The harness new runs and new chats use when nobody has chosen one. Upstream's is 'claude'; this fork's is Codex.
+ *  It is a default for NEW work only: a stored run, preset or catalog entry with no engine still means Claude. */
+export const DEFAULT_ENGINE = 'codex';
+
 export const ENGINES = Object.freeze({
   claude: Object.freeze({ label: 'Claude', models: true, cost: true, subagents: true, helpers: true, beta: false, signin: false, chat: Object.freeze({ images: true, pdfs: true }) }),
   codex: Object.freeze({ label: 'Codex', models: true, cost: true, subagents: true, helpers: true, beta: true, signin: false, chat: Object.freeze({ images: true, pdfs: false }) }),

@@ -1,3 +1,4 @@
+import { DEFAULT_ENGINE } from '../shared/engine-switch.mjs';
 import { getDb, prepare, tx } from './db.mjs';
 import { projectKey as keyOfDir } from './store.mjs';
 import {
@@ -46,7 +47,7 @@ function scalar({ id, path = [id], check, def, teamKey = null, hint, readUser = 
     team: teamKey ? (ctx) => ctx.teamValue(teamKey) : null };
 }
 const SCALARS = [
-  scalar({ id: 'run.engine', path: ['runEngine'], check: SETTING_CHECKS.runEngine, def: 'claude', hint: 'must be an engine', readUser: runEngineSetting }),
+  scalar({ id: 'run.engine', path: ['runEngine'], check: SETTING_CHECKS.runEngine, def: DEFAULT_ENGINE, hint: 'must be an engine', readUser: runEngineSetting }),
   scalar({ id: 'pipelineCostLimitUsd', check: SETTING_CHECKS.usdCap, def: null, hint: 'must be a positive number of USD' }),
   scalar({ id: 'humanRateUsdPerHour', check: SETTING_CHECKS.usdCap, def: DEFAULT_HUMAN_RATE_USD, teamKey: 'cost.humanRateUsd', hint: 'must be a positive number of USD' }),
   scalar({ id: 'askMaxTurns', check: SETTING_CHECKS.askMaxTurns, def: DEFAULT_ASK_MAX_TURNS, teamKey: 'ask.maxTurns', hint: 'must be an integer between 1 and 500' }),
@@ -105,7 +106,7 @@ function utilEntry(engine, job) {
 }
 // Ask Worca (D17): user-only, not cascadable — reachable by id so one resolver serves every caller, but never
 // listed by settingIds(), so the project Settings API and tab are unchanged.
-const ASK_ENGINE = Object.freeze({ id: 'askEngine', path: ['askEngine'], store: 'settings', default: 'claude', userOnly: true, hint: 'must be an engine',
+const ASK_ENGINE = Object.freeze({ id: 'askEngine', path: ['askEngine'], store: 'settings', default: DEFAULT_ENGINE, userOnly: true, hint: 'must be an engine',
   validate: (value) => SETTING_CHECKS.engine(value), readUser: () => askEngineSetting(), readProject: () => undefined, team: null });
 const ASK_MODEL_RE = new RegExp(`^models\\.(${ASK_ENGINES.join('|')})\\.ask$`);
 function askModelEntry(engine) {
