@@ -1,9 +1,9 @@
 // src/core/title.mjs
 import { runClaude } from './claude-runner.mjs';
 import { normalizingOnEvent } from './engines/claude-events.mjs';
-import { resolveModelEnv, resolveModelCost, catalogHasModel, estimateCost, isPriceableUsage } from './config.mjs';
+import { resolveModelEnv, resolveModelCost, catalogHasModel, estimateCost, isPriceableUsage, engineOfModel } from './config.mjs';
 import { titleModel as storedTitleModel } from './settings.mjs';
-import { AUX_EFFORT } from './model-env.mjs';
+import { AUX_EFFORT, HELPER_ENGINES } from './model-env.mjs';
 import { roleModelFor } from './model-roles.mjs';
 import { withRecoveryRetry } from './recovery-backoff.mjs';
 import { bridgeCostFor, forgetBridgeTag } from './bridge/telemetry.mjs';
@@ -187,7 +187,17 @@ export async function generateTitle(prompt, opts = {}, deps) {
  * `engine`: null for Claude.
  * @returns {Promise<string>}
  */
-export async function auxTextCall({ systemPrompt, prompt, model, engine = null }, opts = {}) {
+/** The harness a helper call runs on when its caller named none: the model's own, when that is a helper harness other
+ *  than Claude (a Codex model is run by codex, never handed to the claude CLI); else null, which is Claude. */
+export function helperEngineOfModel(model, owner = engineOfModel) {
+  if (typeof model !== 'string' || !model.trim()) return null;
+  let own = null;
+  try { own = owner(model); } catch { own = null; }
+  return own && own !== 'claude' && HELPER_ENGINES.includes(own) ? own : null;
+}
+
+export async function auxTextCall({ systemPrompt, prompt, model, engine: namedEngine = null }, opts = {}) {
+  const engine = namedEngine || helperEngineOfModel(model, opts.engineOfModel);
   try {
     // A provider 429 (a shared free pool) is retried with the recovery backoff;
     // nothing else is — a title is cosmetic, and an unspawnable CLI (stamped

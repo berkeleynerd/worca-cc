@@ -59,7 +59,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir, availableParallelism } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import {
+import { ALL_EFFORTS,
   EFFORTS, CODEX_EFFORTS, effortsForEngine, MODEL_ENGINES, RUN_ENGINES, ASK_ENGINES, HELPER_ENGINES, OWN_SIGNIN_ENGINES, aModelOf, ownSignInNote, modelIdProblem, SUBAGENT_MODELS, isReservedModelEnvKey, assertModelCost, envFlag,
   assertModelUpstream, upstreamEnvConflict, modelEnvRef, codexUpstreamProblem,
   UPSTREAM_PROVIDERS, COPILOT_ACCOUNT_TYPES, DEFAULT_PROVIDER_CONCURRENCY, MAX_PROVIDER_CONCURRENCY,
@@ -444,7 +444,7 @@ export function memoryDefragModel() {
     return { ...UNSET_DEFRAG_MODEL };
   }
   const e = d.effort;
-  const effort = typeof e === 'string' && EFFORTS.includes(e) ? e : null;
+  const effort = typeof e === 'string' && ALL_EFFORTS.includes(e) ? e : null;
   if (e !== undefined && effort === null) warnDefragModelOnce('effort', e, 'defragment runs use the model\'s default effort');
   return { model: m.trim(), effort };
 }
@@ -476,8 +476,8 @@ function assertModelPairInput(key, input, models) {
     throw new Error(`${key}.model must be a catalog model id`);
   }
   const effortIn = typeof input.effort === 'string' ? input.effort.trim() : input.effort;   // trimmed like setNodeModel / checkStartPair
-  if (!blank(effortIn) && !EFFORTS.includes(effortIn)) {
-    throw new Error(`${key}.effort must be one of ${EFFORTS.join(' | ')}`);
+  if (!blank(effortIn) && !ALL_EFFORTS.includes(effortIn)) {
+    throw new Error(`${key}.effort must be one of ${ALL_EFFORTS.join(' | ')}`);
   }
   let model = input.model.trim();
   const effort = blank(effortIn) ? null : effortIn;
@@ -1716,7 +1716,7 @@ export function agentGenModel() {
     warnOnce(v, 'agent generation uses the CLI default');
     return { model: null, effort: null };
   }
-  const effort = typeof v.effort === 'string' && EFFORTS.includes(v.effort) ? v.effort : null;
+  const effort = typeof v.effort === 'string' && ALL_EFFORTS.includes(v.effort) ? v.effort : null;
   if (v.effort !== undefined && v.effort !== null && effort === null) warnOnce(v, 'agent generation uses the model\'s default effort');
   return { model: m.trim(), effort };
 }
@@ -1765,7 +1765,7 @@ export function namingModel() {
     warnOnce(v, 'run naming uses the cheapest ready Claude model');
     return { model: null, effort: null };
   }
-  const effort = typeof v.effort === 'string' && EFFORTS.includes(v.effort) ? v.effort : null;
+  const effort = typeof v.effort === 'string' && ALL_EFFORTS.includes(v.effort) ? v.effort : null;
   if (v.effort !== undefined && v.effort !== null && effort === null) warnOnce(v, 'run naming uses the model\'s default effort');
   return { model: m.trim(), effort };
 }
@@ -1806,7 +1806,7 @@ export function commandSummaryModel() {
     warnOnce(v, 'command summaries use the cheapest ready Claude model');
     return { model: null, effort: null };
   }
-  const effort = typeof v.effort === 'string' && EFFORTS.includes(v.effort) ? v.effort : null;
+  const effort = typeof v.effort === 'string' && ALL_EFFORTS.includes(v.effort) ? v.effort : null;
   if (v.effort !== undefined && v.effort !== null && effort === null) warnOnce(v, 'command summaries use the model\'s default effort');
   return { model: m.trim(), effort };
 }

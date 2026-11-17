@@ -4,6 +4,7 @@
 // option cards as JSON. Nothing is stored; the "Go deeper in chat" path is an ordinary Ask turn.
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { helperEngineOfModel } from './title.mjs';
 import { runClaude } from './claude-runner.mjs';
 import { normalizingOnEvent } from './engines/claude-events.mjs';
 import { resolveModelEnv } from './config.mjs';
@@ -113,6 +114,7 @@ export function parseAlternatives(text) {
  * @param {{cwd:string, model?:string, signal?:AbortSignal, onDelta?:(t:string)=>void, run?:Function}} opts
  */
 export async function runPinpoint(input, { cwd, model, signal, onDelta = () => {}, run = runClaude } = {}) {
+  const engine = helperEngineOfModel(model);
   await mkdir(cwd, { recursive: true });
   const explain = input.action === 'explain';
   let streamed = '';
@@ -121,7 +123,8 @@ export async function runPinpoint(input, { cwd, model, signal, onDelta = () => {
     systemPrompt: explain ? EXPLAIN_SYSTEM_PROMPT : ALTERNATIVES_SYSTEM_PROMPT,
     prompt: explain ? buildExplainPrompt(input) : buildAlternativesPrompt(input),
     model: model || undefined,
-    modelEnv: resolveModelEnv(model || undefined),
+    // A Codex model answers on codex, read-only (helperEngineOfModel); any other model on the claude CLI as before.
+    ...(engine ? { engine, sandbox: 'read-only' } : { modelEnv: resolveModelEnv(model || undefined) }),
     effort: AUX_EFFORT,
     allowedTools: [],
     tools: [],

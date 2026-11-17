@@ -1,5 +1,7 @@
 // src/core/naming.mjs — Smart run naming (flag smartRunNaming, docs/feature-flags.md): the one branch-name
 // entry point for starts that got no explicit name, and the single cheap model call behind the New run form.
+import { DEFAULT_ENGINE } from '../shared/engine-switch.mjs';
+import { HELPER_ENGINES } from './model-env.mjs';
 import { flagEnabled } from './flags.mjs';
 import { smartNaming } from './settings.mjs';
 import { auxTextCall, sanitizeTitle, isRefusalTitle, resolveTitleModel } from './title.mjs';
@@ -24,9 +26,13 @@ export async function uniqueBranch(projectDir, name, pipelineId, list = listLoca
   return have.has(name) ? sanitizeBranchName(`${name}-${shortOf(pipelineId)}`) : name;
 }
 
-/** Cheapest ready Claude model at its lowest listed effort; null when the catalog offers none. Pure. */
-export function pickNamingModel(rows, costOf) {
-  const facts = modelFacts(rows, { costOf }).filter((f) => f.ready && (f.engines || []).includes('claude') && !f.free);
+/** Cheapest ready model at its lowest listed effort, on the default harness when it runs helper jobs and has a ready
+ *  model, else on Claude; null when the catalog offers none. Pure. */
+export function pickNamingModel(rows, costOf, preferred = DEFAULT_ENGINE) {
+  const all = modelFacts(rows, { costOf }).filter((f) => f.ready && !f.free);
+  const on = (engine) => all.filter((f) => (f.engines || []).includes(engine));
+  const first = HELPER_ENGINES.includes(preferred) ? on(preferred) : [];
+  const facts = first.length ? first : on('claude');
   facts.sort((a, b) => (a.price?.output ?? Infinity) - (b.price?.output ?? Infinity) || (b.tierRank ?? 0) - (a.tierRank ?? 0));
   const best = facts[0];
   return best ? { model: best.id, effort: best.efforts?.[0] || null } : null;

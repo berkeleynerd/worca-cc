@@ -5,6 +5,7 @@ import { mockEnabled } from '../../../src/core/claude-runner.mjs';
 import { budgetStatus } from '../../../src/core/cost-budget.mjs';
 import { demoChunks, demoPinpointReply } from '../../../src/core/demo-scenario.mjs';
 import { mockSlowMs } from '../../../src/core/engines/mock.mjs';
+import { CODEX_DEFAULT_MODEL } from '../../../src/core/engines/codex.mjs';
 import { pinpointCwd, runPinpoint, validatePinpointInput } from '../../../src/core/pinpoint.mjs';
 import { CLAUDE_SIGNED_OUT_MESSAGE } from '../../../src/core/preflight.mjs';
 import { worcaHome } from '../../../src/core/projects.mjs';
@@ -47,7 +48,12 @@ app.post('/api/pinpoint', async (req, res) => {
   if (pinpointInFlight >= PINPOINT_MAX_IN_FLIGHT) return res.status(429).json({ error: `at most ${PINPOINT_MAX_IN_FLIGHT} Pinpoint answers may run at once` });
   const mock = mockEnabled({});
   let model;
-  try { model = resolveSetting('models.claude.ask').value?.model || undefined; } catch { model = undefined; }
+  // Pinpoint answers on the chat's harness: the engine for new chats and its Chat model (Codex in this fork by default).
+  try {
+    const askEngine = resolveSetting('askEngine').value || 'claude';
+    model = resolveSetting(`models.${askEngine}.ask`).value?.model || undefined;
+    if (!model && askEngine === 'codex') model = CODEX_DEFAULT_MODEL;
+  } catch { model = undefined; }
   if (!mock) {
     const refusal = await brokerStartRefusal(req, [String(model || '')]);
     if (refusal) return res.status(409).json({ error: refusal, code: 'credential-missing' });
