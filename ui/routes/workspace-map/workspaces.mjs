@@ -320,7 +320,7 @@ app.post('/api/workspaces/:id/map/render', async (req, res) => {
  */
 async function refuseSignedOutScan(res, models) {
   if (models && modelHasBaseUrlRouting(models.scanModel)) return false;
-  return refuseSignedOutClaude(res, { engine: scanRunEngine() });
+  return refuseSignedOutClaude(res, { engine: scanRunEngine(models) });
 }
 
 // POST /api/workspaces/scan (first scan): validated exactly as the save will be (D4).

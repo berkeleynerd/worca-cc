@@ -842,6 +842,9 @@ export function createAutomationEngine(deps = {}) {
       source: { type: forge, kind: ev.kind, repo: ev.repo, number: ev.number, url: ev.url, title: ev.title,
         prompt: buildTask(ev, r, { plan, triage: triage?.kind || null, workspace: wsRun ? rule.workspace : null }) },
       guardrailsId: rule.guardrailsId || DEFAULT_GUARDRAILS,
+      // An unattended run on outside input keeps its guardrail set whole: Strict, a saved or a team set has path
+      // rules only Claude Code enforces, so such a run names Claude instead of being refused on the default harness.
+      ...(['normal', 'permissive'].includes(rule.guardrailsId || DEFAULT_GUARDRAILS) ? {} : { engine: 'claude' }),
       humanInLoop: false,
       ...(sourceBranch ? { sourceBranch, syncBeforeStart: false } : {}),
     };

@@ -118,6 +118,7 @@ import {
   askEngineSetting, assertAskEngineInput, setAskEngineSetting, askModelsSetting, assertAskModelsInput, setAskModels,
   chatHomePinsFor, setChatHomePinsFor,
 } from '../src/core/settings.mjs';
+import { CODEX_DEFAULT_MODEL } from '../src/core/engines/codex.mjs';
 import { resolveSetting, resolveAll, writeProjectSettings, assertProjectSettingsPatch, resolveRunEngine, defragSlotPair } from '../src/core/settings-cascade.mjs';
 import { resolveNightConfig, validateNightPatch } from '../src/core/night/config.mjs';
 import { effectiveNightConfig, nightLayers } from '../src/core/night/effective.mjs';
@@ -6959,6 +6960,8 @@ async function defragRequest(req, res, { memoryScope, projectKey: key }) {
     title: memoryScope === 'global' ? 'Memory defragment (global)' : `Memory defragment: ${p.name}`,
     workflowId: MEMORY_DEFRAG_WORKFLOW_ID,
     guardrailsId: 'normal',
+    // Settings › Memory names a model of one harness: the run uses that harness, so the setting is the one applied.
+    ...(memoryDefragModel().model ? { engine: helperEngineOfModel(memoryDefragModel().model) || 'claude' } : {}),
     memoryScope,
     ...(req.body && req.body.mock === true ? { mock: true } : {}),
   };
@@ -7214,7 +7217,7 @@ async function startAutoRescan(ws, { workflowId = WORKSPACE_SCAN_WORKFLOW_ID } =
   // No usable stored pick (a legacy workspace, or one whose model left the catalog): the page
   // opens the pick-a-model window and starts the scan itself; the member change stands.
   if (models && models.needsModel) return { needsModel: true };
-  if (!(models && modelHasBaseUrlRouting(models.scanModel)) && scanRunEngine() === 'claude') {
+  if (!(models && modelHasBaseUrlRouting(models.scanModel)) && scanRunEngine(models) === 'claude') {
     const { state } = await probeClaudeAuth({ bin: configuredClaudeBin(), mock: isTruthy(process.env.WORCA_MOCK ?? process.env.ORCH_MOCK) });
     if (state === 'signed-out') return { skipped: CLAUDE_SIGNED_OUT_MESSAGE };
   }
@@ -7344,7 +7347,9 @@ function primaryMemberOf(paths) {
  * Sends the 409 and returns true when it refused.
  */
 /** The harness a workspace scan run starts on (it names none itself: the run.engine default for a workspace). */
-function scanRunEngine() {
+function scanRunEngine(models = null) {
+  // A scan runs on the harness of its scan model: the pick is a model of one harness, and the run must use the pick.
+  if (models && models.scanModel) return helperEngineOfModel(models.scanModel) || 'claude';
   try { return resolveRunEngine({ explicit: null, workspace: true }).engine || 'claude'; } catch { return 'claude'; }
 }
 
@@ -7376,6 +7381,16 @@ function workspacePickUsable(pick, models) {
  *  { needsModel: true, models: <PRIMARY_CATALOG> } and the caller asks the user to pick a model
  *  (D20). An explicit body.models always wins (the prompted client sends one; API/CLI callers can
  *  still force a pick). */
+/** With nothing stored and no Claude role, a Codex-default install scans on Codex: its quick role, else its default
+ *  model, when the catalog carries it. The investigator alias keeps its default (it is a Claude Code notion). */
+function defaultHarnessScanModels(models) {
+  if (DEFAULT_ENGINE !== 'codex') return null;
+  const role = withRole(null, 'codex', 'workspaceScan');
+  const model = (role && role.model) || CODEX_DEFAULT_MODEL;
+  if (!(Array.isArray(models) ? models : []).some((m) => m && m.id === model)) return null;
+  return { ...WORKSPACE_SCAN_DEFAULT_MODELS, scanModel: model, scanEffort: (role && role.effort) || 'medium' };
+}
+
 async function scanModelsFor(body, projectPaths, workspace = null) {
   const models = await listModels(primaryMemberOf(projectPaths));
   if (workspace && !(body && body.models) && !workspacePickUsable(workspace.scanModels, models)) {
@@ -7384,7 +7399,7 @@ async function scanModelsFor(body, projectPaths, workspace = null) {
   return resolveScanModels({
     explicit: body && body.models,
     // Model roles (D3): with no stored pick, the quick role is the scan model.
-    stored: withScanRole(workspaceScanModels(), WORKSPACE_SCAN_DEFAULT_MODELS),
+    stored: withScanRole(workspaceScanModels(), WORKSPACE_SCAN_DEFAULT_MODELS) || defaultHarnessScanModels(models),
     workspacePick: workspace && workspace.scanModels ? workspace.scanModels : null,
     models,
   });
@@ -7412,6 +7427,7 @@ async function scanRequest(req, res, { id, name, projectPaths, rescan, models, w
       title: scanRunTitle(name, { partial }),
       workflowId,
       guardrailsId: 'normal',
+      engine: scanRunEngine(models),
       ...(mock ? { mock: true } : {}),
     };
     return await startRunHandler(req, res);

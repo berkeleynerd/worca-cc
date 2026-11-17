@@ -50,7 +50,7 @@ import { estimateStepHours, resolveConstants, sumStepHours } from '../shared/hum
 import { diffNumstat } from './git-info.mjs';
 import { humanEstimateOverrides } from './settings.mjs';
 import { renderPromptArtifact } from './phases.mjs';
-import { listModels, modelHasBaseUrlRouting, resolveRunConfig, stepSlotDefaults, slotSourceLines } from './config.mjs';
+import { listModels, engineOfModel, modelHasBaseUrlRouting, resolveRunConfig, stepSlotDefaults, slotSourceLines } from './config.mjs';
 import { defragSlotPair, utilityModelFor } from './settings-cascade.mjs';
 import { resolveDefragModel, agentPairText } from './memory-defrag-model.mjs';
 import { withRole } from './model-roles.mjs';
@@ -269,6 +269,12 @@ export class GraphOrchestrator extends RunHarness {
   _scanModelPins() {
     if (!this._isWorkspaceScan()) return null;
     if ((this.claude.engine || 'claude') !== 'claude') {
+      // The scan's own pick, when it is a model of this harness (the server starts the scan on its model's harness).
+      const pick = this.opts.scanModels;
+      if (pick && pick.scanModel && engineOfModel(pick.scanModel, { projectDir: this.projectDir }) === this.claude.engine) {
+        this._log('orchestrator', 'info', `Workspace scan model: ${pick.scanModel}${pick.scanEffort ? ` · ${pick.scanEffort}` : ''} (${pick.source || 'explicit'})`);
+        return { agentPair: { model: pick.scanModel, effort: pick.scanEffort || null }, subagentPin: null };
+      }
       const slot = utilityModelFor(this.claude.engine, 'workspaceScan', { workspace: true });
       if (!slot.model) return null;
       return { agentPair: { model: slot.model, effort: slot.effort }, subagentPin: null };
