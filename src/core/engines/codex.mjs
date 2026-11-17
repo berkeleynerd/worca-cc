@@ -372,6 +372,9 @@ export function expandMcpRefs(servers, from = {}) {
   return out;
 }
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** The codex env names that carry a remote MCP server's header values (codexMcpOverrides). */
+const MCP_HTTP_SLOT = 'WORCA_MCP_HTTP_';
+const MCP_HTTP_SLOT_RE = /^WORCA_MCP_HTTP_\d+$/;
 
 /**
  * The per-call `-c mcp_servers.<name>.*` overrides for the stdio servers of an --mcp-config document (spec §4.6).
@@ -398,7 +401,7 @@ export function codexMcpOverrides(servers, { passEnv = [], disabledTools = {} } 
       const fromEnv = [];
       for (const [h, v] of Object.entries(srv.headers && typeof srv.headers === 'object' ? srv.headers : {})) {
         if (typeof v !== 'string' || !/^[A-Za-z0-9-]+$/.test(h)) continue;
-        const slot = `WORCA_MCP_HTTP_${remoteSeq++}`;
+        const slot = `${MCP_HTTP_SLOT}${remoteSeq++}`;
         const bearer = h.toLowerCase() === 'authorization' ? /^Bearer\s+(.+)$/i.exec(v.trim()) : null;
         if (bearer) { env[slot] = bearer[1]; args.push('-c', `${key}.bearer_token_env_var=${tomlString(slot)}`); }
         else { env[slot] = v; fromEnv.push(`${tomlString(h)}=${tomlString(slot)}`); }
@@ -418,7 +421,8 @@ export function codexMcpOverrides(servers, { passEnv = [], disabledTools = {} } 
       if (Object.hasOwn(env, k) && env[k] !== v) throw new Error(`MCP servers declare ${k} with different values — codex hands its servers one shared environment`);
       env[k] = v; names.push(k);
     }
-    for (const k of passEnv) if (ENV_NAME_RE.test(k) && !names.includes(k) && !declared.has(k)) names.push(k);
+    // A remote server's header slot (below) is in codex's env too: it is that server's secret, never a stdio server's.
+    for (const k of passEnv) if (ENV_NAME_RE.test(k) && !names.includes(k) && !declared.has(k) && !MCP_HTTP_SLOT_RE.test(k)) names.push(k);
     if (names.length) args.push('-c', `${key}.env_vars=[${names.map(tomlString).join(',')}]`);
     const off = Object.hasOwn(disabledTools, name) && Array.isArray(disabledTools[name]) ? disabledTools[name] : [];
     if (off.length) args.push('-c', `${key}.disabled_tools=[${off.map(tomlString).join(',')}]`);
