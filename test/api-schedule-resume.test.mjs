@@ -163,7 +163,7 @@ test('engine: a scheduled resume on another engine stores it, fires on it, and a
   assert.equal(entry.orch.claude.engine, 'codex', 'the ticket resumes on its engine');
   await cleanupRun(id);
 
-  const guarded = await pausedFixture({ pauseReason: 'usage_limit', guardrailsId: 'normal' });
+  const guarded = await pausedFixture({ pauseReason: 'usage_limit', guardrailsId: 'secure' });
   const refused = await post('/api/schedules/resume', { pipelineId: guarded.id, scheduledFor: inFuture(60_000), engine: 'codex' });
   assert.equal(refused.status, 409, 'checked when scheduled, not only when it fires');
   const body = await refused.json();

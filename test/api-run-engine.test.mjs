@@ -69,8 +69,21 @@ test('engine: an unknown name, the mock and a non-boolean consent are refused wi
   assert.match((await r.json()).error, /allowUnguardedEngine must be true or false/);
 });
 
-test('engine: a default body, or Claude named, passes no engine option', async () => {
-  for (const extra of [{}, { engine: 'claude' }, { engine: 'claude', allowUnguardedEngine: true }]) {
+test('engine: a default body starts on codex, the default harness, on the install\'s Normal set with no consent', async () => {
+  const r = await post('/api/run', body());
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const { runId } = await r.json();
+  const o = runs.get(runId).orch;
+  assert.equal(o.opts.claude.engine, 'codex');
+  assert.equal(o.claude.engine, 'codex');
+  assert.equal(o.guardrailsId, 'normal');
+  assert.equal('allowUnguardedEngine' in o.opts.claude, false);
+  await post('/api/stop', { runId });
+  await untilSettled(runId);
+});
+
+test('engine: Claude named passes no engine option', async () => {
+  for (const extra of [{ engine: 'claude' }, { engine: 'claude', allowUnguardedEngine: true }]) {
     const r = await post('/api/run', { ...body(), ...extra });
     assert.equal(r.status, 200, JSON.stringify(extra));
     const { runId } = await r.json();
@@ -86,14 +99,14 @@ test('engine: a default body, or Claude named, passes no engine option', async (
   }
 });
 
-test('engine: codex on a set with permission rules is refused at once, with the consent offered', async () => {
+test('engine: codex on a set with permission rules other than the built-in Normal is refused at once, with the consent offered', async () => {
   const before = runs.size;
-  const r = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'normal' });
+  const r = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'secure' });
   assert.equal(r.status, 409);
   const data = await r.json();
   assert.equal(data.code, 'engine-refused');
   assert.equal(data.overridable, true);
-  assert.match(data.error, /^engine codex: guardrail set "normal" has permission rules this engine cannot enforce/);
+  assert.match(data.error, /^engine codex: guardrail set "secure" has permission rules this engine cannot enforce/);
   assert.match(data.error, /tick Allow unguarded/, 'the UI\'s consent, not the CLI flag');
   assert.doesNotMatch(data.error, /--allow-unguarded-engine/);
   assert.match(data.error, /run it with the Permissive set/, 'the UI names the set, not --guardrails');
@@ -101,16 +114,21 @@ test('engine: codex on a set with permission rules is refused at once, with the 
 });
 
 test('engine: a scheduled run on codex is checked when it is scheduled, not only when it fires', async () => {
-  const r = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'normal', scheduledFor: new Date(Date.now() + 3600_000).toISOString() });
+  const r = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'secure', scheduledFor: new Date(Date.now() + 3600_000).toISOString() });
   assert.equal(r.status, 409);
   const data = await r.json();
   assert.equal(data.code, 'engine-refused');
   assert.equal(data.overridable, true);
   const ok = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'permissive', scheduledFor: new Date(Date.now() + 3600_000).toISOString() });
   assert.equal(ok.status, 202, 'a set the engine can hold schedules as before');
+  // The built-in Normal set, named or as the install default, schedules on Codex with no consent.
+  for (const extra of [{ engine: 'codex', guardrailsId: 'normal' }, { guardrailsId: 'normal' }, {}]) {
+    const normal = await post('/api/run', { ...body(), ...extra, scheduledFor: new Date(Date.now() + 3600_000).toISOString() });
+    assert.equal(normal.status, 202, JSON.stringify(extra));
+  }
 });
 test('engine: with the consent the same run starts on codex', async () => {
-  const r = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'normal', allowUnguardedEngine: true });
+  const r = await post('/api/run', { ...body(), engine: 'codex', guardrailsId: 'secure', allowUnguardedEngine: true });
   assert.equal(r.status, 200);
   const { runId } = await r.json();
   const o = runs.get(runId).orch;

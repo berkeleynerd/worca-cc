@@ -105,6 +105,29 @@ test('codex does not hold WebFetch while its shell or web search can still fetch
   assert.deepEqual(off._engineGate().filter((l) => /deny rules/.test(l)), ['engine codex: deny rules enforced on codex: Bash, WebSearch, WebFetch']);
 });
 
+test('codex starts on the built-in Normal set without the consent and the audit names what it does not hold; the same rules under any other id still refuse', async () => {
+  const rules = guardrailsToPermissionRules((await readGuardrailSet('normal')).settings);
+  const o = withNodes(orch({ engine: 'codex' }), {});
+  o.guardrailPermissionRules = rules;
+  o.guardrailsId = 'normal';
+  const lines = o._engineGate();
+  assert.ok(lines.some((l) => l.startsWith('engine codex: guardrail set "normal": rules NOT enforced on codex') && l.includes('Read(.env*), Edit(.env*), Read(*.pem) (+28 more)')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith(`engine codex: deny rules held on codex only in part, as command rules — ${REACH}`) && l.includes('Bash(git push)')), lines.join('\n'));
+  // A custom set, a team policy set and Secure++ carry no such pass, even with Normal's exact rules.
+  for (const id of ['gr_copy_of_normal', 'gp:team-normal', 'secure', 'custom']) {
+    const other = withNodes(orch({ engine: 'codex' }), {});
+    other.guardrailPermissionRules = rules;
+    other.guardrailsId = id;
+    assert.throws(() => other._engineGate(), (err) => err.message.includes(`engine codex: guardrail set "${id}" has permission rules this engine cannot enforce (Read(.env*), Edit(.env*), Read(*.pem) (+28 more))`), id);
+  }
+  // Command rules alone: Normal's id passes them too, another id does not.
+  const cmds = withNodes(orch({ engine: 'codex' }), {});
+  cmds.guardrailPermissionRules = CMD_RULES;
+  cmds.guardrailsId = 'normal';
+  assert.ok(cmds._engineGate().some((l) => l.includes('held on codex only in part')));
+  // Only Codex: another engine on Normal still needs the consent (the cursor, goose and opencode tests below).
+});
+
 test('--allow-unguarded-engine runs it anyway and says so in the audit', () => {
   const o = withNodes(orch({ engine: 'codex', allowUnguardedEngine: true }), {});
   o.guardrailPermissionRules = RULES;
@@ -428,7 +451,7 @@ test('a resume keeps the saved consent; a point without it is refused and stays 
     verifier: async () => ({ status: 'ok', issues: [], review: { issues: [] }, summary: '' }),
   });
   const claude = { mock: true, engine: 'codex', model: 'claude-sonnet-5' };
-  ref = engine.create({ projectDir: dir, prompt: 'demo', auto: true, guardrailsId: 'normal', claude: { ...claude, allowUnguardedEngine: true }, runners: runners() });
+  ref = engine.create({ projectDir: dir, prompt: 'demo', auto: true, guardrailsId: 'secure', claude: { ...claude, allowUnguardedEngine: true }, runners: runners() });
   const first = await ref.run();
   assert.equal(first.status, 'paused');
   const id = ref.state.id;
@@ -441,7 +464,7 @@ test('a resume keeps the saved consent; a point without it is refused and stays 
   ref = engine.create({ projectDir: dir, auto: true, claude: { mock: true }, runners: runners(), resume: bare });
   const gateNodes = await ref._engineGateNodes(bare.resumePoint);
   assert.ok(gateNodes.length > 0 && gateNodes.every((n) => n.key && Array.isArray(n.tools)), JSON.stringify(gateNodes));
-  await assert.rejects(() => ref.resume(), /engine codex: guardrail set "normal" has permission rules this engine cannot enforce/);
+  await assert.rejects(() => ref.resume(), /engine codex: guardrail set "secure" has permission rules this engine cannot enforce/);
   const kept = readPipelineForResume(id);
   assert.equal(kept.row.status, 'paused');
   assert.ok(kept.resumePoint, 'the resume point is kept');
@@ -548,16 +571,16 @@ test('engineStartRefusal answers before a run exists, and says when the consent 
   assert.equal(await make({}).engineStartRefusal(), null, 'Claude: nothing to check');
   assert.equal(await make({ engine: 'codex' }).engineStartRefusal(), null, 'the Permissive set has no rules');
 
+  // The built-in Normal set is the install default and Codex the default harness: a plain run starts, no consent asked.
   const strict = make({ engine: 'codex' }, { guardrailsId: 'normal' });
-  assert.deepEqual(await strict.engineStartRefusal(), {
-    error: 'engine codex: guardrail set "normal" has permission rules this engine cannot enforce (Read(.env*), Edit(.env*), Read(*.pem) (+28 more)) — run it with --guardrails permissive, or pass --allow-unguarded-engine to run it without them',
+  assert.equal(await strict.engineStartRefusal(), null, 'Normal on Codex starts without the consent');
+  assert.equal(await make({ engine: 'codex', allowUnguardedEngine: true }, { guardrailsId: 'normal' }).engineStartRefusal(), null);
+  // Secure is refused for its path rules (WebFetch among the rules it lists), and the consent lifts it.
+  const secure = await make({ engine: 'codex' }, { guardrailsId: 'secure' }).engineStartRefusal();
+  assert.deepEqual(secure, {
+    error: 'engine codex: guardrail set "secure" has permission rules this engine cannot enforce (Read(.env*), Edit(.env*), Read(*.pem) (+65 more)) — run it with --guardrails permissive, or pass --allow-unguarded-engine to run it without them',
     overridable: true,
   });
-  assert.equal(await make({ engine: 'codex', allowUnguardedEngine: true }, { guardrailsId: 'normal' }).engineStartRefusal(), null);
-  // Secure was already refused for its path rules; WebFetch now joins the rules it lists, and the consent still lifts it.
-  const secure = await make({ engine: 'codex' }, { guardrailsId: 'secure' }).engineStartRefusal();
-  assert.equal(secure.overridable, true);
-  assert.match(secure.error, /guardrail set "secure" has permission rules this engine cannot enforce/);
   assert.equal(await make({ engine: 'codex', allowUnguardedEngine: true }, { guardrailsId: 'secure' }).engineStartRefusal(), null);
 
   const prev = process.env.WORCA_BROKER_URL;
@@ -582,7 +605,7 @@ test('engineStartRefusal reports an MCP registry layer as not liftable', async (
     overridable: false,
   });
   // Rules AND copies: the consent would lift only the rules, so the answer is the copies, not liftable.
-  const both = createOrchestrator({ projectDir: tmp(), guardrailsId: 'normal', claude: { mock: true, engine: 'codex' } });
+  const both = createOrchestrator({ projectDir: tmp(), guardrailsId: 'secure', claude: { mock: true, engine: 'codex' } });
   both._resolveMcp = layer([{ name: 'pg' }]);
   const r = await both.engineStartRefusal();
   assert.equal(r.overridable, false);

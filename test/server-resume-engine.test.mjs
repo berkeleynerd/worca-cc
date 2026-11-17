@@ -97,14 +97,14 @@ test('"Resume on Claude" of a Codex run names Claude, so the saved engine does n
 });
 
 test('a refused switch answers 409 before anything resumes; the consent re-send goes through', async () => {
-  const { id } = await seedPaused('claude run to codex', null, { guardrailsId: 'normal' });
+  const { id } = await seedPaused('claude run to codex', null, { guardrailsId: 'secure' });
   const before = runs.size;
   const r = await post('/api/resume', { pipelineId: id, mock: true, engine: 'codex' });
   const data = await r.json();
   assert.equal(r.status, 409, JSON.stringify(data));
   assert.equal(data.code, 'engine-refused');
   assert.equal(data.overridable, true);
-  assert.match(data.error, /^engine codex: guardrail set "normal" has permission rules this engine cannot enforce/);
+  assert.match(data.error, /^engine codex: guardrail set "secure" has permission rules this engine cannot enforce/);
   assert.doesNotMatch(data.error, /--allow-unguarded-engine/, 'worded for the UI');
   assert.equal(runs.size, before, 'no run entry is left behind');
   const { readPipelineForResume } = await import('../src/core/artifacts.mjs');

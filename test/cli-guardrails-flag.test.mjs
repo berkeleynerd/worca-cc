@@ -1,7 +1,8 @@
 // test/cli-guardrails-flag.test.mjs — `worca --guardrails <id>` (G13 follow-up).
-// A fresh install defaults to the Normal set, whose permission rules Codex and Cursor cannot hold,
-// so the CLI needs a way to pick the set a run uses: --guardrails names it, an unknown id fails
-// before any run starts, and the engine gate's refusal tells a CLI user which flag lifts it.
+// A fresh install defaults to the Normal set. Codex, the default harness, starts on it and names the rules
+// it does not hold; Cursor cannot hold them and refuses, as Codex does on Secure. So the CLI needs a way to
+// pick the set a run uses: --guardrails names it, an unknown id fails before any run starts, and the
+// engine gate's refusal tells a CLI user which flag lifts it.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, execSync } from 'node:child_process';
@@ -36,10 +37,23 @@ test('--help lists --guardrails', () => {
   assert.match(r.stdout, /--guardrails <id>/);
 });
 
-test('a fresh install refuses a Codex run on Normal and names the flag that picks Permissive', () => {
-  const r = cli(['--project', project(), '--prompt', 'x', '--mock', '--yes', '--engine', 'codex']);
-  assert.notEqual(r.status, 0);
-  assert.match(r.stdout + r.stderr, /guardrail set "normal" has permission rules this engine cannot enforce .* — run it with --guardrails permissive, or pass --allow-unguarded-engine/);
+test('a fresh install starts a plain run: Codex on Normal, no flag, and the log names the rules Codex does not hold', () => {
+  for (const engine of [[], ['--engine', 'codex']]) {
+    const r = cli(['--project', project(), '--prompt', 'x', '--mock', '--yes', ...engine]);
+    assert.equal(r.status, 0, `${engine.join(' ')}: ${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /engine codex: guardrail set "normal": rules NOT enforced on codex .*Read\(\.env\*\)/);
+    assert.match(r.stdout, /engine codex: deny rules held on codex only in part, as command rules .*Bash\(git push\)/);
+    assert.doesNotMatch(r.stdout + r.stderr, /has permission rules this engine cannot enforce/);
+  }
+});
+
+test('a fresh install still refuses Codex on Secure and Cursor on Normal, and names the flag that picks Permissive', () => {
+  const secure = cli(['--project', project(), '--prompt', 'x', '--mock', '--yes', '--engine', 'codex', '--guardrails', 'secure']);
+  assert.notEqual(secure.status, 0);
+  assert.match(secure.stdout + secure.stderr, /guardrail set "secure" has permission rules this engine cannot enforce .* — run it with --guardrails permissive, or pass --allow-unguarded-engine/);
+  const cursor = cli(['--project', project(), '--prompt', 'x', '--mock', '--yes', '--engine', 'cursor']);
+  assert.notEqual(cursor.status, 0);
+  assert.match(cursor.stdout + cursor.stderr, /guardrail set "normal" has permission rules this engine cannot enforce .* — run it with --guardrails permissive, or pass --allow-unguarded-engine/);
 });
 
 test('--guardrails permissive runs a Codex project on a fresh install without --allow-unguarded-engine', () => {
