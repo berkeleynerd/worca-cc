@@ -3,7 +3,7 @@
 // run-control mailbox carries `approve`. The hold itself is tested in graph-scheduler-approve.test.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { approvalAnswer, approvalWording, approvalSummary, APPROVAL_SUMMARY_MAX, APPROVAL_CHOICES, APPROVAL_ASK_KIND } from '../src/core/orchestrator.mjs';
+import { approvalAnswer, approvalWording, approvalSummary, approvalDocuments, APPROVAL_SUMMARY_MAX, APPROVAL_CHOICES, APPROVAL_ASK_KIND } from '../src/core/orchestrator.mjs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,4 +92,12 @@ test('validation: the gate wording fields are short strings, the summary port is
   assert.match(v23({ ...base, question: 7 })[0], /question must be a non-empty string/);
   assert.match(v23({ ...base, approveLabel: 'Go', stopLabel: 'Go' })[0], /must differ/);
   assert.match(v23({ ...base, summaryPort: 'nope' })[0], /summaryPort 'nope' is not an md output/);
+});
+
+test('a gate links its full documents: the held file first, then the named ports, each once, plain names only', () => {
+  const outs = [{ id: 'report', filename: 'report.md' }, { id: 'issues', filename: 'issues.json' }, { id: 'tpl', filename: 'x-{cycle}.md' }];
+  assert.deepEqual(approvalDocuments({}, outs, '/run/report.md', 'report'), [{ port: 'report', relPath: 'report.md' }]);
+  assert.deepEqual(approvalDocuments({ documentPorts: ['issues', 'report', 'tpl', 'nope'] }, outs, '/run/report.md', 'report'),
+    [{ port: 'report', relPath: 'report.md' }, { port: 'issues', relPath: 'issues.json' }]);
+  assert.deepEqual(approvalDocuments({ documentPorts: ['issues'] }, outs, null, 'report'), [{ port: 'issues', relPath: 'issues.json' }]);
 });

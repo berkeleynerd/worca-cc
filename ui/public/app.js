@@ -6240,6 +6240,28 @@ function renderClarifyBody(r, panel, pq) {
     sum.textContent = pq.approval.summary;
     panel.appendChild(sum);
   }
+  // The full documents behind the summary (the held file, then config.approve.documentPorts): one click each,
+  // opened in the artifact viewer, so nothing a person approves has to be read outside this page.
+  const approvalDocs = pq && pq.kind === 'approval' && pq.approval && Array.isArray(pq.approval.documents) ? pq.approval.documents : [];
+  if (approvalDocs.length) {
+    const row = document.createElement('div');
+    row.className = 'approval-docs';
+    const lead = document.createElement('span');
+    lead.className = 'approval-docs-lead';
+    lead.textContent = approvalDocs.length === 1 ? 'Full document:' : 'Full documents:';
+    row.appendChild(lead);
+    const list = approvalDocs.filter((d) => d && d.relPath).map((d) => ({ relPath: d.relPath }));
+    for (const d of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn approval-doc';
+      b.textContent = d.relPath;
+      b.title = `Open ${d.relPath}`;
+      b.addEventListener('click', () => { openRunArtifactPopup({ pipelineId: r.pipelineId || null, runId: r.runId }, d, list); });
+      row.appendChild(b);
+    }
+    panel.appendChild(row);
+  }
 
   if (questions.length === 0) {
     const note = document.createElement('div');

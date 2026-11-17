@@ -631,6 +631,18 @@ export const RULES = [
           if (typeof approve.approveLabel === 'string' && approve.approveLabel.trim() === (approve.stopLabel || '').trim()) {
             add(`node '${n.id}' config.approve.approveLabel and stopLabel must differ`, { nodeId: n.id });
           }
+          if (approve.documentPorts !== undefined) {
+            const ports = approve.documentPorts;
+            if (!Array.isArray(ports) || ports.length > 6 || ports.some((x) => typeof x !== 'string' || !x)) {
+              add(`node '${n.id}' config.approve.documentPorts must be a list of at most 6 output port ids`, { nodeId: n.id });
+            } else if (metaOf(n.id)) {
+              for (const id of ports) {
+                if (!outputsOf(n.id).some((p) => p && p.id === id && p.type !== 'void')) {
+                  add(`node '${n.id}' config.approve.documentPorts names '${id}', which is not a file output of this node`, { nodeId: n.id });
+                }
+              }
+            }
+          }
           if (typeof approve.summaryPort === 'string' && metaOf(n.id) && !outputsOf(n.id).some((p) => p && p.id === approve.summaryPort && p.type === 'md')) {
             add(`node '${n.id}' config.approve.summaryPort '${approve.summaryPort}' is not an md output of this node`, { nodeId: n.id });
           }

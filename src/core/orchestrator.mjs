@@ -102,6 +102,21 @@ export const approvalWording = (approve, label, file) => {
   return { choices, question: text(approve?.question)
     || `${label} is waiting for your approval before the run goes on.${file ? ` Read ${file} first.` : ''}` };
 };
+/** The full documents a gate links to from its card: the held file first, then each `config.approve.documentPorts`
+ *  output of the same node. [{port, relPath}] with relPath the file's name in the run folder (what the artifact
+ *  viewer opens). A port with no plain file name is left out. */
+export function approvalDocuments(approve, outputs, heldFile, heldPort) {
+  const docs = [];
+  const add = (port, name) => {
+    if (!port || !name || /[{}/\\]/.test(name) || docs.some((d) => d.port === port)) return;
+    docs.push({ port, relPath: name });
+  };
+  if (heldFile) add(heldPort || 'held', basename(heldFile));
+  for (const port of Array.isArray(approve?.documentPorts) ? approve.documentPorts : []) {
+    add(port, (outputs || []).find((o) => o && o.id === port)?.filename);
+  }
+  return docs;
+}
 /** The summary a gate shows on its card: the text of `config.approve.summaryPort`'s file, which sits beside the
  *  held file. Missing, unreadable or empty: no summary (the gate still asks). Capped, since it rides a socket. */
 export const APPROVAL_SUMMARY_MAX = 8000;
@@ -1338,7 +1353,8 @@ export class GraphOrchestrator extends RunHarness {
     return this._enqueueAsk(async () => {
       const summary = await approvalSummary(approve, nc?.meta?.outputs || nc?.outputs, file, q.approval?.port);
       return this._ask({ id: q.id, kind: APPROVAL_ASK_KIND, nodeId: q.nodeId, executionId: q.executionId,
-        questions, approval: { ...q.approval, ...(summary ? { summary } : {}) }, agent: label, validate });
+        questions, approval: { ...q.approval, ...(summary ? { summary } : {}),
+          documents: approvalDocuments(approve, nc?.meta?.outputs || nc?.outputs, file, q.approval?.port) }, agent: label, validate });
     }).then(
       async (payload) => {
         const decision = validate(payload)?.decision ?? null;

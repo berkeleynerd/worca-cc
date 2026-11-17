@@ -783,6 +783,7 @@ async function attachAndDrive(orch, flags, start) {
       } else if (kind === 'approval') {
         out(c('yellow', c('bold', 'Approval needed:')));
         if (payload.approval && payload.approval.summary) out(`\n${payload.approval.summary}\n`);
+        for (const d of (payload.approval && payload.approval.documents) || []) out(`Full document: ${d.relPath} (in the run folder)`);
         const payload = await askClarify(rl, questions || []);
         orch.answer(id, payload);
       } else if (kind === 'questions') {
