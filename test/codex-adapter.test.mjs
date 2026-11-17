@@ -320,10 +320,27 @@ test('runCodexProcess: a stderr tracing line does not hide the usage limit the t
 test('codexPreflight: signed in passes; signed out and a missing binary refuse; an unreadable answer warns', POSIX, async () => {
   const dir = tmp();
   const bin = (name, body) => { const p = join(dir, name); writeFileSync(p, `#!/bin/sh\n${body}\n`); chmodSync(p, 0o755); return p; };
-  assert.deepEqual(await codexPreflight({ bin: bin('in', 'echo "Logged in using ChatGPT" 1>&2') }), {});
-  assert.match((await codexPreflight({ bin: bin('out', 'echo "Not logged in"; exit 1') })).refusal, /is not signed in — run `codex login`/);
-  assert.match((await codexPreflight({ bin: join(dir, 'no-such-codex') })).refusal, /cannot run .*no-such-codex \(ENOENT\) — install codex, or point WORCA_CODEX_BIN at it/);
-  assert.match((await codexPreflight({ bin: bin('mute', 'exit 0') })).warning, /could not tell whether/);
+  // No model provider of the user's own (never the developer's real ~/.codex/config.toml): `codex login status` decides.
+  const none = { userProvider: () => null };
+  assert.deepEqual(await codexPreflight({ bin: bin('in', 'echo "Logged in using ChatGPT" 1>&2'), ...none }), {});
+  assert.match((await codexPreflight({ bin: bin('out', 'echo "Not logged in"; exit 1'), ...none })).refusal, /is not signed in — run `codex login`/);
+  assert.match((await codexPreflight({ bin: join(dir, 'no-such-codex'), ...none })).refusal, /cannot run .*no-such-codex \(ENOENT\) — install codex, or point WORCA_CODEX_BIN at it/);
+  assert.match((await codexPreflight({ bin: bin('mute', 'exit 0'), ...none })).warning, /could not tell whether/);
+});
+
+test('codexPreflight: a carried user model provider counts as the sign-in; a missing binary still refuses', POSIX, async () => {
+  const dir = tmp();
+  const bin = (name, body) => { const p = join(dir, name); writeFileSync(p, `#!/bin/sh\n${body}\n`); chmodSync(p, 0o755); return p; };
+  let asked = 0;
+  const carried = { userProvider: () => { asked += 1; return { id: 'corp', args: [], env: {}, secrets: [] }; } };
+  assert.deepEqual(await codexPreflight({ bin: bin('out', 'echo "Not logged in"; exit 1'), ...carried }), {}, 'signed out, but the provider signs every spawn in');
+  assert.deepEqual(await codexPreflight({ bin: bin('mute', 'exit 0'), ...carried }), {}, 'no warning either');
+  assert.equal(asked, 2);
+  assert.deepEqual(await codexPreflight({ bin: bin('in', 'echo "Logged in using ChatGPT" 1>&2'), ...carried }), {});
+  assert.equal(asked, 2, 'a signed-in codex never reads the provider');
+  assert.match((await codexPreflight({ bin: join(dir, 'no-such-codex'), ...carried })).refusal, /cannot run .*no-such-codex \(ENOENT\)/);
+  // signIn: false (every model on its own endpoint) checks only that the binary runs, whatever the provider says.
+  assert.deepEqual(await codexPreflight({ bin: bin('out2', 'echo "Not logged in"; exit 1'), signIn: false, userProvider: () => { throw new Error('not asked'); } }), {});
 });
 
 test('read-only sandbox: --sandbox read-only, the shell off and no writable dirs; resume rides -c; unknown modes never pass', () => {
