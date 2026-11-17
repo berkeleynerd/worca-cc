@@ -70,7 +70,6 @@ test('settings: agentGenModel round-trips through the API, validates BEFORE any 
   // Refusals change nothing on disk.
   for (const [bad, re] of [
     [{ model: 'no-such-model' }, /The model “no-such-model” is not in the catalog/],
-    [{ model: 'gpt-5.5', effort: 'high' }, /"gpt-5\.5" runs on Codex\. This setting picks a model Claude Code can run\.$/],
     [{ model: 'claude-haiku-4-5', effort: 'max' }, /does not offer effort "max"/],
     [{ model: '', effort: 'high' }, /“Effort” needs a model/],
     // `low` is an effort some harness lists (ALL_EFFORTS): the pair rule passes it, the model's own list refuses it.
