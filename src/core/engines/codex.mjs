@@ -31,6 +31,7 @@ import { ARGV_INLINE_LIMIT } from './claude.mjs';
 import { CODEX_PRICES, codexCachedRate } from '../list-prices.mjs';
 import { codexEndpointSpawn, findCodexEndpointEntry, hasCodexEndpoint } from './codex-endpoint.mjs';
 import { codexUserProviderSpawn } from './codex-user-provider.mjs';
+import { CODEX_MODEL_EFFORTS } from '../model-env.mjs';
 import { makeChatDescriptor, openaiListRates } from './chat-descriptor.mjs';
 import { chatEnginesTaking } from '../../shared/engine-switch.mjs';
 import { scopeLauncherEnv } from '../mcp/launch.mjs';
@@ -307,7 +308,7 @@ export function codexInvestigatorRole({ agents, subagentSystemPrompt, inheritMod
     typeof subagentSystemPrompt === 'string' ? subagentSystemPrompt.trim() : ''].filter(Boolean).join('\n\n');
   const lines = [`developer_instructions = ${tomlString(prompt)}`];
   // On a custom endpoint the role inherits the parent's model with its provider: a built-in id would go to the endpoint.
-  const model = !inheritModel && codexModelPriced(def?.model) && def?.model ? def.model : null;
+  const model = !inheritModel && def?.model && (codexModelPriced(def.model) || Object.hasOwn(CODEX_MODEL_EFFORTS, def.model)) ? def.model : null;
   if (model) lines.push(`model = ${tomlString(model)}`);
   const effort = def?.effort;
   if (CODEX_EFFORTS.includes(effort)) lines.push(`model_reasoning_effort = ${tomlString(effort)}`);

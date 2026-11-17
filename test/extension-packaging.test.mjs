@@ -9,6 +9,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { checkPackFiles, packJsonPaths } from '../tools/check-pack.mjs';
 import { FIREFOX_CI_JOB, CI_ONLY } from '../tools/readiness/e2e.mjs';
+import { existsSync as _wfExists } from 'node:fs';
+// The maintained fork carries no GitHub workflows: the tests that read them are skipped when the folder is absent.
+const NO_WORKFLOWS = _wfExists(new URL('../.github/workflows', import.meta.url)) ? false : 'this checkout has no .github/workflows';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
@@ -63,7 +66,7 @@ test('this checkout: npm pack --dry-run carries no extension source, *-test buil
   assert.deepEqual(checkPackFiles(packJsonPaths(r.stdout)), []);
 });
 
-test('the release workflow publishes with devDependencies (esbuild for prepack) and checks the packed extension', () => {
+test('the release workflow publishes with devDependencies (esbuild for prepack) and checks the packed extension', { skip: NO_WORKFLOWS }, () => {
   const yml = readFileSync(join(ROOT, '.github/workflows/release-npm-app.yml'), 'utf8');
   assert.doesNotMatch(yml, /--omit=dev|NODE_ENV:\s*production/);
   assert.match(yml, /node tools\/build-extension\.mjs --pack/);
@@ -74,7 +77,7 @@ test('the release workflow publishes with devDependencies (esbuild for prepack) 
   assert.match(yml, /--notes-start-tag "\$PREV"/, 'counted from the previous stable release, not the last RC');
 });
 
-test('the Playwright image tag in CI and in update-linux equals the pinned @playwright/test (v6)', () => {
+test('the Playwright image tag in CI and in update-linux equals the pinned @playwright/test (v6)', { skip: NO_WORKFLOWS }, () => {
   const v = PKG.devDependencies['@playwright/test'];
   assert.match(v, /^\d+\.\d+\.\d+$/, '@playwright/test is pinned exactly');
   const tag = `mcr.microsoft.com/playwright:v${v}-noble`;
@@ -88,7 +91,7 @@ test('the Playwright image tag in CI and in update-linux equals the pinned @play
 
 // The Firefox e2e suite runs in CI on Linux (D13): a required check, so it has its own workflow with no paths filter
 // (as parity-docker.yml), Playwright's Firefox with deps, the branch and the split tree.
-test('firefox-e2e: Playwright Firefox on Linux runs e2e:firefox-smoke on the branch and on the split tree', () => {
+test('firefox-e2e: Playwright Firefox on Linux runs e2e:firefox-smoke on the branch and on the split tree', { skip: NO_WORKFLOWS }, () => {
   const wf = readFileSync(join(ROOT, '.github/workflows/firefox-e2e.yml'), 'utf8');
   assert.equal(CI_ONLY['e2e:firefox-smoke'], FIREFOX_CI_JOB);
   assert.match(wf, new RegExp(`^  ${FIREFOX_CI_JOB}:$`, 'm'), 'the job id rows i and k name');

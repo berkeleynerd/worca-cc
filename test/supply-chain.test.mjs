@@ -10,6 +10,9 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
+import { existsSync as _wfExists } from 'node:fs';
+// The maintained fork carries no GitHub workflows: the tests that read them are skipped when the folder is absent.
+const NO_WORKFLOWS = _wfExists(new URL('../.github/workflows', import.meta.url)) ? false : 'this checkout has no .github/workflows';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -41,7 +44,7 @@ test('Dockerfile: the node base image is pinned by digest', () => {
 // One Node for everything this repo runs: .nvmrc names the major, the image and every single-version
 // workflow job follow it, and the fast-test matrix covers the supported range (the exact floor,
 // .nvmrc's major, the newest LTS). A Node bump is .nvmrc plus the image digest.
-test('one Node: the image and every single-version job use .nvmrc; the matrix spans floor to newest LTS', async () => {
+test('one Node: the image and every single-version job use .nvmrc; the matrix spans floor to newest LTS', { skip: NO_WORKFLOWS }, async () => {
   const nvmrc = read('.nvmrc').trim();
   assert.match(nvmrc, /^\d+$/, '.nvmrc names a major only (an exact pin would go stale)');
   const from = read('docker/Dockerfile').split('\n').find((l) => /^FROM\s/.test(l));
@@ -73,7 +76,7 @@ test('one Node: the image and every single-version job use .nvmrc; the matrix sp
   assert.equal(JSON.parse(read('package.json')).engines.node, `>=${MIN_NODE}`, 'engines is MIN_NODE');
 });
 
-test('workflows: every third-party action is pinned by full commit SHA, with its tag in a comment', () => {
+test('workflows: every third-party action is pinned by full commit SHA, with its tag in a comment', { skip: NO_WORKFLOWS }, () => {
   const dir = join(ROOT, '.github', 'workflows');
   const bad = [];
   let seen = 0;

@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeTimings, needsFullSuiteLock, parseArgs, planShards, releaseFullSuiteLock, selectFiles, tryFullSuiteLock } from '../tools/test.mjs';
 import { timingFiles } from '../tools/test-timings-merge.mjs';
+import { existsSync as _wfExists } from 'node:fs';
+// The maintained fork carries no GitHub workflows: the tests that read them are skipped when the folder is absent.
+const NO_WORKFLOWS = _wfExists(new URL('../.github/workflows', import.meta.url)) ? false : 'this checkout has no .github/workflows';
 
 const TOOLS = fileURLToPath(new URL('../tools', import.meta.url));
 const rmOpts = { recursive: true, force: true, maxRetries: 10, retryDelay: 50 };
@@ -238,7 +241,7 @@ test('every tiers.json entry matches at least one test file (a typo silently mov
   }
 });
 
-test('ci.yml engine filter lists every slow-tier entry of tiers.json', () => {
+test('ci.yml engine filter lists every slow-tier entry of tiers.json', { skip: NO_WORKFLOWS }, () => {
   const yml = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const { slow } = JSON.parse(readFileSync(new URL('./tiers.json', import.meta.url), 'utf8'));
   for (const g of slow) assert.ok(yml.includes(`- '${g}'`), `ci.yml engine filter is missing ${g}`);

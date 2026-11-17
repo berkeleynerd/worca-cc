@@ -3311,7 +3311,7 @@ export class RunHarness extends EventEmitter {
       if (enforced.length) lines.push(`engine ${name}: deny rules enforced on ${name}: ${ruleNames(enforced)}`);
       if (partial.length) lines.push(`engine ${name}: deny rules held on ${name} only in part, as ${this._enginePartialKind()} — ${this._engineRuleReach()} (--allow-unguarded-engine): ${ruleNames(partial)}`);
       const gSkip = this._engineUnenforced(this.guardrailPermissionRules);
-      if (gSkip.length) lines.push(`engine ${name}: guardrail set "${this.guardrailsId}": rules NOT enforced on ${name} (--allow-unguarded-engine): ${ruleNames(gSkip)}`);
+      if (gSkip.length) lines.push(`engine ${name}: guardrail set "${this.guardrailsId}": rules NOT enforced on ${name} (${name === 'codex' && this.guardrailsId === 'normal' && !this._allowUnguardedEngine ? 'the Normal set runs on codex without them' : '--allow-unguarded-engine'}): ${ruleNames(gSkip)}`);
       const pSkip = this._engineUnenforced(projectRules);
       if (pSkip.length) lines.push(`engine ${name}: the project's .claude/settings.json deny rules NOT enforced on ${name} (--allow-unguarded-engine): ${ruleNames(pSkip)}`);
       if (hostGuardEnabled()) lines.push(`engine ${name}: the host-guard hook does not run on ${name} (its preamble still does)`);

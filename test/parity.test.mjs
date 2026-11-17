@@ -10,6 +10,9 @@ import { packJsonPaths } from '../tools/check-pack.mjs';
 import { parseArgs, main, compareDirs } from '../tools/parity.mjs';
 import { chromePath } from '../tools/parity/flows.mjs';
 import { EXPECTED_SHOTS, FLOW_NAMES } from '../tools/parity/compare.mjs';
+import { existsSync as _wfExists } from 'node:fs';
+// The maintained fork carries no GitHub workflows: the tests that read them are skipped when the folder is absent.
+const NO_WORKFLOWS = _wfExists(new URL('../.github/workflows', import.meta.url)) ? false : 'this checkout has no .github/workflows';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
 
@@ -171,7 +174,7 @@ test('visual only: one colour on one element (the run status word) is a visual d
   assert.ok(r.visualDiffs.every((v) => v.pixels > 0 && v.pixels < 1280 * 800 * 0.01), 'a small region, not the whole page');
 });
 
-test('CI-image parity is its own workflow: docker:A (branch) vs docker:B (split tree) from one Dockerfile, plus tree vs package', () => {
+test('CI-image parity is its own workflow: docker:A (branch) vs docker:B (split tree) from one Dockerfile, plus tree vs package', { skip: NO_WORKFLOWS }, () => {
   const wf = readFileSync(new URL('../.github/workflows/parity-docker.yml', import.meta.url), 'utf8');
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   assert.match(wf, /^on:\n {2}push:\n {4}branches: \[dev\]\n {2}pull_request:\n {4}branches: \[dev\]\n/m);
