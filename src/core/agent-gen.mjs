@@ -158,8 +158,11 @@ class AgentGen extends EventEmitter {
       permissionMode: this.claude.permissionMode || 'acceptEdits',
       model: this.claude.model,
       effort: this.claude.effort,
-      modelEnv: resolveModelEnv(this.claude.model), // catalog routing env (design §4.8)
-      bin: this.claude.bin,
+      // Another harness (this.claude.engine, set by the server from the model's own harness) writes the two files in
+      // its own sandbox, confined to the scratch dir; the claude CLI keeps the catalog routing env (design §4.8).
+      ...(this.claude.engine && this.claude.engine !== 'claude'
+        ? { engine: this.claude.engine }
+        : { modelEnv: resolveModelEnv(this.claude.model), bin: this.claude.bin }),
       mock: this.claude.mock,
       signal: this.abort.signal,
       onEvent: normalizingOnEvent((e) => this._onAgentEvent(e)),

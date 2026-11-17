@@ -2,7 +2,7 @@
 // the body of register() was moved verbatim from ui/server.mjs. Edit it here from now on.
 import { AGENT_KEY_RE, createAgent, deleteAgent, listAgents, readAgent, updateAgent } from '../../../src/core/agent-store.mjs';
 import { MOCK_WRITER_ROLES } from '../../../src/core/claude-runner.mjs';
-import { agentErrorStatus, badRequest, isTruthy, refuseSignedOutClaude, runs, startAgentGen } from '../../server.mjs';
+import { agentErrorStatus, agentGenTarget, badRequest, isTruthy, refuseSignedOutClaude, runs, startAgentGen } from '../../server.mjs';
 
 export function register(app) {
 
@@ -55,7 +55,7 @@ app.post('/api/agents/generate', async (req, res) => {
     const allAgents = await listAgents();
     const byKey = Object.fromEntries(allAgents.map((m) => [m.key, m]));
     const pick = (keys) => (Array.isArray(keys) ? keys : []).map((k) => byKey[k]).filter(Boolean);
-    if (await refuseSignedOutClaude(res)) return;
+    if (await refuseSignedOutClaude(res, { engine: (await agentGenTarget()).engine || 'claude' })) return;
     const genId = await startAgentGen({
       name, purpose: String(body.purpose || ''), details: String(body.details || ''),
       expectedBefore: pick(body.expectedBefore), expectedAfter: pick(body.expectedAfter),

@@ -129,7 +129,7 @@ import { parseRunOverlay, checkRunOverlay, overlayWorkflowRefusal, OVERLAY_ERROR
 import { listPresets, readPreset, createPreset, updatePreset, duplicatePreset, deletePreset, readRunSetup, createPresetFromRun } from '../src/core/run-presets-store.mjs';
 import { presetRefusals, completeSnapshot } from '../src/core/run-presets-check.mjs';
 import { setupFromBody, bodyFollowingPreset, overriddenKeys, PRESET_LIMITS } from '../src/shared/run-presets.mjs';
-import { describeTitleModel, auxTextCall, resolveTitleModel } from '../src/core/title.mjs';
+import { describeTitleModel, auxTextCall, resolveTitleModel, helperEngineOfModel } from '../src/core/title.mjs';
 import { validatePinpointInput, runPinpoint, pinpointCwd } from '../src/core/pinpoint.mjs';
 import { demoChunks, demoPinpointReply } from '../src/core/demo-scenario.mjs';
 import { effectiveHumanRateUsd } from '../src/core/human-rate.mjs';
@@ -281,7 +281,7 @@ import {
 } from '../src/core/config.mjs';
 import { listGlobalModels, addGlobalModel, updateGlobalModel, readSettings } from '../src/core/settings.mjs';
 import { modelEnvRef, maskModelEnvValue, SUBAGENT_MODEL_VALUES, subagentModelIssue, UPSTREAM_PROVIDERS, CODEX_EFFORTS, MODEL_ENGINES, HELPER_ENGINES, CURSOR_EFFORTS, COPILOT_EFFORTS, GOOSE_EFFORTS, OPENCODE_EFFORTS, helperEngineFor, ASK_ENGINES, lockedChatEngine } from '../src/core/model-env.mjs';
-import { engineLabel, ENGINE_NAMES, engineRefusalFor, ENGINES, chatAttachRefusal, chatSwitchChanges } from '../src/shared/engine-switch.mjs';
+import { engineLabel, ENGINE_NAMES, engineRefusalFor, ENGINES, chatAttachRefusal, chatSwitchChanges, DEFAULT_ENGINE } from '../src/shared/engine-switch.mjs';
 import { engineReadiness, engineLocks } from '../src/core/engines/readiness.mjs';
 import { chatDescriptor, chatEngineGate } from '../src/core/engines/chat.mjs';   // #943: the switch route runs the turn's gate
 import { chatModelRates } from '../src/core/ask/chat-price.mjs';
@@ -7214,7 +7214,7 @@ async function startAutoRescan(ws, { workflowId = WORKSPACE_SCAN_WORKFLOW_ID } =
   // No usable stored pick (a legacy workspace, or one whose model left the catalog): the page
   // opens the pick-a-model window and starts the scan itself; the member change stands.
   if (models && models.needsModel) return { needsModel: true };
-  if (!(models && modelHasBaseUrlRouting(models.scanModel))) {
+  if (!(models && modelHasBaseUrlRouting(models.scanModel)) && scanRunEngine() === 'claude') {
     const { state } = await probeClaudeAuth({ bin: configuredClaudeBin(), mock: isTruthy(process.env.WORCA_MOCK ?? process.env.ORCH_MOCK) });
     if (state === 'signed-out') return { skipped: CLAUDE_SIGNED_OUT_MESSAGE };
   }
@@ -7343,7 +7343,13 @@ function primaryMemberOf(paths) {
  * refuses — mock, an auth env var, or an unknown answer (an older CLI) all pass.
  * Sends the 409 and returns true when it refused.
  */
-async function refuseSignedOutClaude(res) {
+/** The harness a workspace scan run starts on (it names none itself: the run.engine default for a workspace). */
+function scanRunEngine() {
+  try { return resolveRunEngine({ explicit: null, workspace: true }).engine || 'claude'; } catch { return 'claude'; }
+}
+
+async function refuseSignedOutClaude(res, { engine = 'claude' } = {}) {
+  if (engine && engine !== 'claude') return false;   // another harness's sign-in is its own preflight's to check
   const { state } = await probeClaudeAuth({ bin: configuredClaudeBin(), mock: serverMockMode() });
   if (state !== 'signed-out') return false;
   res.status(409).json({ code: CLAUDE_SIGNED_OUT_CODE, error: CLAUDE_SIGNED_OUT_MESSAGE });
@@ -9285,15 +9291,27 @@ function agentErrorStatus(code) {
  * follow-up POST /api/agents.
  * @returns {string} genId
  */
+/** Agent generation's model and harness, read per Generate: the Agent generation setting, else the everyday role of the
+ *  default harness, else Claude's. `engine` is null for the claude CLI: a Codex model, or no model at all on a
+ *  Codex-default install, generates on codex. */
+async function agentGenTarget() {
+  const stored = storedAgentGenModel();
+  const roleFirst = DEFAULT_ENGINE !== 'claude' ? withRole(stored, DEFAULT_ENGINE, 'agentGenModel') : stored;
+  const pick = resolveAgentGenModel(withRole(roleFirst, 'claude', 'agentGenModel'), await listModels(''));
+  const engine = helperEngineOfModel(pick.model) || (!pick.model && DEFAULT_ENGINE !== 'claude' && HELPER_ENGINES.includes(DEFAULT_ENGINE) ? DEFAULT_ENGINE : null);
+  return { pick, engine };
+}
+
 async function startAgentGen(input) {
   // The Models page's Claude tab › Agent generation, read per Generate. Unset, or a model the
   // catalog no longer carries: no --model, the CLI's default (as before the setting existed).
-  const pick = resolveAgentGenModel(withRole(storedAgentGenModel(), 'claude', 'agentGenModel'), await listModels(''));
+  const { pick, engine } = await agentGenTarget();
   if (pick.stale) console.warn(`[worca] agentGenModel ${JSON.stringify(pick.stale)} is no longer in the catalog — agent generation uses the CLI default`);
   const orch = createAgentGen({
     ...input,
     claude: {
       permissionMode: 'acceptEdits', mock: serverMockMode(),
+      ...(engine ? { engine } : {}),
       ...(pick.model ? { model: pick.model, ...(pick.effort ? { effort: pick.effort } : {}) } : {}),
     },
   });
@@ -10132,7 +10150,7 @@ if (isMain) {
 }
 
 export { app, server, runs };
-export { AGENTS_DIR, APP_INFO, APP_REPO_URL, ASK_SCOPE_BUSY, ASK_TEXT_PREVIEW_MAX, BRANCH_SETTLED, BUGS_SLUG, CLONE_JOBS, HOST, MARKETPLACE_ID_RE, MARKET_JOBS, NO_PR_HOST, PKG_VERSION, PLAN_TEXT_MAX, PLUGIN_NAME_RE, PORT, PROJECT_ROOT, PR_TITLE_MAX, REMOTE_MODE, RUNNING_VERSION, ResumeError, SETTLED_RUN, SETUP_AGENT_TEXT, SETUP_JOBS, SKILLS_DIR, SKILL_FOLDER_IMPORTS, SKILL_MD_UNREACHABLE, STORE_ERROR_CODES, actions, actionsEnabledHere, activeActionSnaps, adoWebhookSecret, afterMembersChanged, afterProjectRegistered, agentErrorStatus, agentMayBeCaller, answerRun, applyProjectSettingsPatch, applySettingsPatch, askBusyReason, askChatActions, askChatEngine, askCommandBridges, askCommands, askCommandsEnabled, askContextTokens, askDeferred, askDeleting, askEngineSwitchText, askEventPick, askFilesRunDir, askFilesStoreDir, askFollowers, askGroupFor, askGroupThreads, askIdParam, askInFlight, askLiveRun, askProxyBridges, askRefResolver, askRelays, askRunFromPipelineRow, askRunningCount, askSwitchTranscript, askThreadVisible, askTrackingCount, askTurnEngine, askValidateScope, askViewer, askWebAccessFor, askWorktreesEnvelope, autoDetectedBuiltins, automationWorkspaceMembers, automations, awayPersonOf, badRequest, bareWorkspaceKey, bearerMatches, broadcast, broadcastFeature, brokerStartRefusal, builtins, busyActionRunIds, channelHost, chatGroupError, chatNotifier, chatRefusals, checkoutRecOf, commentIdParam, commentsCreate, commentsDelete, commentsFail, commentsList, commentsPatch, commentsReply, createRunPr, crosslinkMemberPrs, currentUpdateEligibility, defaultPrRemotes, deleteAskThreadFully, detectSystemProxyImpl, detectTeamMemorySoon, drainServer, effectiveUiLevel, egressNow, emitAskWorktrees, emitChanged, emitMemoryChanged, emitPluginsChanged, ensureSetup, extensionPairing, factDeps, failedEventTurn, findScheduleItem, flipCard, followCloneCard, forkPrRefusal, fsAllowedRoots, fsLimitedHere, gitMissing, isFinishingRun, isFreshInstall, isLiveRun, isPlainObject, isPrStoreKey, isTruthy, kickAutomations, kickPrWatch, labelsOn, lastUpdateResult, liveAutoRescan, liveDefragRun, liveDiffOf, livePr, liveProbe, liveRunEntry, liveRunIds, liveSliceOf, marketJobFailure, mcpRunPreview, mcpTargetOf, memberFor, memoryError, modelTestsInFlight, namingBucket, namingCatalog, namingOn, namingPick, noRawCommand, notifReader, openMemberPr, ownsWorkspaceTarget, parseMcpOptOut, pauseRun, pickPrRemotes, pinUiLevel, postAskSystemNotice, postDirection, prTargetFor, prWatchFrame, prWatcher, presetCheckCtx, presetScopeOf, primaryMemberOf, projectAutomationRepo, projectDirForKey, projectSettingsState, proxyHost, pruneMarketJobs, prunedNote, publicCloneJob, readInstalledManifest, refuseAgentCaller, refuseSignedOutClaude, registeredProjectForDir, rejectRawTerminalFields, removeRecommendation, requireActions, requireFsAllowed, requireTerminal, resolvePrPipeline, resolveProjectDir, resolveRunScope, resumeEngineOpts, resumeRun, resumeTargetDirs, runGroupIds, runSourceIssue, scanModelsFor, scanRequest, scheduleVerb, sendArtifactRaw, sendCheckoutError, sendMetricsError, sendPolicyError, sendPresetError, serveAskFile, serverMockMode, settleShipped, setupJobs, setupProbesOverride, shipChainNow, shipCtxOf, shipFeatureNow, skillRunPreview, snapshotFor, sockets, stackStates, stackTokens, startAgentGen, startAskTurn, startCloneJob, startMetricsEventTurn, startOrQueue, startRunAs, startRunHandler, startScopeEventTurn, startScriptBench, stopCheckoutServices, stopMemberServices, stopPausedPipeline, stopRun, switchThreadScope, syncMode, syncProjectAction, syncRoute, teamOriginOk, teamWarn, terminalCallerOk, terminalEnabledHere, terminalError, terminalSameOrigin, terminals, tmProject, uiControl, unsyncableBlock, updateChecker, updatePort, updatePreview, validateResumeTarget, versionLister, versionPayload, webhookSecret, withAfter, workspaceMembersBusy };
+export { agentGenTarget, scanRunEngine, AGENTS_DIR, APP_INFO, APP_REPO_URL, ASK_SCOPE_BUSY, ASK_TEXT_PREVIEW_MAX, BRANCH_SETTLED, BUGS_SLUG, CLONE_JOBS, HOST, MARKETPLACE_ID_RE, MARKET_JOBS, NO_PR_HOST, PKG_VERSION, PLAN_TEXT_MAX, PLUGIN_NAME_RE, PORT, PROJECT_ROOT, PR_TITLE_MAX, REMOTE_MODE, RUNNING_VERSION, ResumeError, SETTLED_RUN, SETUP_AGENT_TEXT, SETUP_JOBS, SKILLS_DIR, SKILL_FOLDER_IMPORTS, SKILL_MD_UNREACHABLE, STORE_ERROR_CODES, actions, actionsEnabledHere, activeActionSnaps, adoWebhookSecret, afterMembersChanged, afterProjectRegistered, agentErrorStatus, agentMayBeCaller, answerRun, applyProjectSettingsPatch, applySettingsPatch, askBusyReason, askChatActions, askChatEngine, askCommandBridges, askCommands, askCommandsEnabled, askContextTokens, askDeferred, askDeleting, askEngineSwitchText, askEventPick, askFilesRunDir, askFilesStoreDir, askFollowers, askGroupFor, askGroupThreads, askIdParam, askInFlight, askLiveRun, askProxyBridges, askRefResolver, askRelays, askRunFromPipelineRow, askRunningCount, askSwitchTranscript, askThreadVisible, askTrackingCount, askTurnEngine, askValidateScope, askViewer, askWebAccessFor, askWorktreesEnvelope, autoDetectedBuiltins, automationWorkspaceMembers, automations, awayPersonOf, badRequest, bareWorkspaceKey, bearerMatches, broadcast, broadcastFeature, brokerStartRefusal, builtins, busyActionRunIds, channelHost, chatGroupError, chatNotifier, chatRefusals, checkoutRecOf, commentIdParam, commentsCreate, commentsDelete, commentsFail, commentsList, commentsPatch, commentsReply, createRunPr, crosslinkMemberPrs, currentUpdateEligibility, defaultPrRemotes, deleteAskThreadFully, detectSystemProxyImpl, detectTeamMemorySoon, drainServer, effectiveUiLevel, egressNow, emitAskWorktrees, emitChanged, emitMemoryChanged, emitPluginsChanged, ensureSetup, extensionPairing, factDeps, failedEventTurn, findScheduleItem, flipCard, followCloneCard, forkPrRefusal, fsAllowedRoots, fsLimitedHere, gitMissing, isFinishingRun, isFreshInstall, isLiveRun, isPlainObject, isPrStoreKey, isTruthy, kickAutomations, kickPrWatch, labelsOn, lastUpdateResult, liveAutoRescan, liveDefragRun, liveDiffOf, livePr, liveProbe, liveRunEntry, liveRunIds, liveSliceOf, marketJobFailure, mcpRunPreview, mcpTargetOf, memberFor, memoryError, modelTestsInFlight, namingBucket, namingCatalog, namingOn, namingPick, noRawCommand, notifReader, openMemberPr, ownsWorkspaceTarget, parseMcpOptOut, pauseRun, pickPrRemotes, pinUiLevel, postAskSystemNotice, postDirection, prTargetFor, prWatchFrame, prWatcher, presetCheckCtx, presetScopeOf, primaryMemberOf, projectAutomationRepo, projectDirForKey, projectSettingsState, proxyHost, pruneMarketJobs, prunedNote, publicCloneJob, readInstalledManifest, refuseAgentCaller, refuseSignedOutClaude, registeredProjectForDir, rejectRawTerminalFields, removeRecommendation, requireActions, requireFsAllowed, requireTerminal, resolvePrPipeline, resolveProjectDir, resolveRunScope, resumeEngineOpts, resumeRun, resumeTargetDirs, runGroupIds, runSourceIssue, scanModelsFor, scanRequest, scheduleVerb, sendArtifactRaw, sendCheckoutError, sendMetricsError, sendPolicyError, sendPresetError, serveAskFile, serverMockMode, settleShipped, setupJobs, setupProbesOverride, shipChainNow, shipCtxOf, shipFeatureNow, skillRunPreview, snapshotFor, sockets, stackStates, stackTokens, startAgentGen, startAskTurn, startCloneJob, startMetricsEventTurn, startOrQueue, startRunAs, startRunHandler, startScopeEventTurn, startScriptBench, stopCheckoutServices, stopMemberServices, stopPausedPipeline, stopRun, switchThreadScope, syncMode, syncProjectAction, syncRoute, teamOriginOk, teamWarn, terminalCallerOk, terminalEnabledHere, terminalError, terminalSameOrigin, terminals, tmProject, uiControl, unsyncableBlock, updateChecker, updatePort, updatePreview, validateResumeTarget, versionLister, versionPayload, webhookSecret, withAfter, workspaceMembersBusy };
 export const _testing = {
   updateChecker,
   // The startEgressPolicy() result the /api/proxy routes read, or a startLiveEgress() that also applies saves.
