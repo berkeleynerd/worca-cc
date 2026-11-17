@@ -194,7 +194,7 @@ import { PORT_ID_RE, MAX_PORTS_PER_SIDE, PORT_TYPES, FLOW_LABEL, KEYED_KINDS, SY
 import { FORM_ID_RE, validateFormDef, normalizeAskBlock } from '../../src/shared/forms/form-def.mjs';
 import { ASK_LIMITS } from '../../src/shared/forms/catalog.mjs';
 import { WORKSPACE_MAX_PROJECTS, workspaceSizeLevel } from '../../src/shared/workspace-size.mjs';
-import { engineLabel, usageLimitSwitches, engineSwitchNote, engineReportsCost, ENGINE_NAMES, isBetaEngine, SIGN_IN_ENGINE_NAMES, SESSION_SUBAGENTS_VERIFIED } from '../../src/shared/engine-switch.mjs';
+import { engineLabel, usageLimitSwitches, engineSwitchNote, engineReportsCost, ENGINE_NAMES, isBetaEngine, SIGN_IN_ENGINE_NAMES, SESSION_SUBAGENTS_VERIFIED, DEFAULT_ENGINE } from '../../src/shared/engine-switch.mjs';
 import { runsOn, effortsOn, harnessesLabel, connectionKey, modelGroups, PROVIDER_LABELS } from '../../src/shared/connections.mjs';
 import {
   guardrailSummary, renderGuardrailList, renderGuardrailEditor, collectGuardrailEditor,
@@ -19250,7 +19250,7 @@ async function paintEngineSettings(data, { force = false } = {}) {
   try { const res = await fetch('/api/config'); cfgOk = res.ok; cfg = await safeJson(res); } catch { cfgOk = false; }
   const roles = Array.isArray(cfg?.steps) ? cfg.steps : Object.keys(cfg?.config?.steps || {}).map((key) => ({ key, label: key }));
   const catalog = Array.isArray(cfg?.models) ? cfg.models : [];
-  const fields = { 'run.engine': { own: data.runEngine, inherited: { value: 'claude', source: 'default' } } };
+  const fields = { 'run.engine': { own: data.runEngine, inherited: { value: DEFAULT_ENGINE, source: 'default' } } };   // the run.engine default (settings-cascade.mjs)
   for (const engine of ENGINE_NAMES) for (const role of roles) fields[`models.${engine}.steps.${role.key}`] = { own: data.stepModels?.[engine]?.[role.key], inherited: { value: undefined, source: 'default' } };
   for (const engine of HELPER_ENGINES.filter((e) => e !== 'claude')) {
     for (const job of CODEX_HELPER_JOBS) fields[utilityId(engine, job)] = { own: data.utilityModels?.[engine]?.[job], inherited: { value: undefined, source: 'default' } };

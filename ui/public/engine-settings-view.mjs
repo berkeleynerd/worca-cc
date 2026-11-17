@@ -1,6 +1,6 @@
 import { icon } from './icons.mjs';
 import { renderInheritField, readDirtyFields, readInheritField, inheritText, formatPair } from './inherit-field.mjs';
-import { engineLabel, engineChoiceLabel, isBetaEngine, ENGINE_NAMES, MODEL_ENGINE_NAMES, SIGN_IN_ENGINE_NAMES, CHAT_ENGINE_NAMES, ENGINES } from '../../src/shared/engine-switch.mjs';
+import { engineLabel, engineChoiceLabel, isBetaEngine, ENGINE_NAMES, MODEL_ENGINE_NAMES, SIGN_IN_ENGINE_NAMES, CHAT_ENGINE_NAMES, ENGINES, DEFAULT_ENGINE } from '../../src/shared/engine-switch.mjs';
 import { applyEngineLocks, engineLock } from './engine-locks.mjs';
 import { MODEL_ROLES, ROLE_LABELS, ROLE_HINTS, ROLE_HARNESSES, roleOfSettingId } from '../../src/shared/model-roles.mjs';
 const roleLabelText = (role) => `From ${ROLE_LABELS[role]}`;
@@ -310,7 +310,7 @@ export function renderAskEngineSection(host, { catalog = [], askEngine, askModel
   host.append(renderInheritField(doc, { id: 'askEngine', label: 'Engine for new chats', kind: 'select', level: 'user',
     hint: `New chats start here. A chat can move to another engine later, from its model picker.${notes ? ` ${notes}` : ''}`,
     options: [{ value: 'claude', label: 'Claude' }, ...others.map((e) => ({ value: e, label: offered[e] ? engineChoiceLabel(e) : `${engineLabel(e)} (unavailable)` }))],
-    own: askEngine ?? undefined, inherited: { value: 'claude', source: 'default' }, format: engineName }));
+    own: askEngine ?? undefined, inherited: { value: DEFAULT_ENGINE, source: 'default' }, format: engineName }));   // the askEngine default (settings-cascade.mjs)
   applyEngineLocks(host);
   // The chat models: the Engines card's table, one row per engine and always listed (no switch, nothing folded).
   const rows = [];
