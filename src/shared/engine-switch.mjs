@@ -29,7 +29,7 @@ export const DEFAULT_ENGINE = 'codex';
 
 export const ENGINES = Object.freeze({
   claude: Object.freeze({ label: 'Claude', models: true, cost: true, subagents: true, helpers: true, beta: false, signin: false, chat: Object.freeze({ images: true, pdfs: true }) }),
-  codex: Object.freeze({ label: 'Codex', models: true, cost: true, subagents: true, helpers: true, beta: true, signin: false, chat: Object.freeze({ images: true, pdfs: false }) }),
+  codex: Object.freeze({ label: 'Codex', models: true, cost: true, subagents: true, helpers: true, beta: false, signin: false, chat: Object.freeze({ images: true, pdfs: false }) }),
   copilot: Object.freeze({ label: 'Copilot', models: true, cost: false, subagents: true, helpers: true, beta: true, signin: false, chat: Object.freeze({ images: true, pdfs: true }) }),
   cursor: Object.freeze({ label: 'Cursor', models: true, cost: false, subagents: false, helpers: false, beta: true, signin: true, chat: Object.freeze({ images: false, pdfs: false, verified: false }) }),
   gemini: Object.freeze({ label: 'Gemini CLI', models: true, cost: false, subagents: false, helpers: false, beta: true, signin: true, chat: Object.freeze({ images: true, pdfs: true }) }),

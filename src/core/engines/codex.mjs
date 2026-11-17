@@ -953,7 +953,7 @@ export const codexChat = makeChatDescriptor({
   resumeNotFound: codexResumeNotFound,
   shellTrippedMessage: 'Codex tried to run a shell command although its shell was switched off — worca stopped the turn.',
   titles: true,
-  suggestionModel: 'gpt-5.6-luna',
+  suggestionModel: 'gpt-6-luna',
   turnImages: true,
   signIn: () => ['CODEX_', 'OPENAI_'],
   // codex's MCP resource tools (plans/ask-on-codex-spike.md (h)): they read what the chat's own MCP servers publish.

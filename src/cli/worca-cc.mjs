@@ -370,8 +370,8 @@ Options:
   --tag <tag>              tag the run for cost allocation, e.g. --tag client:acme (repeatable)
   --extras <paths>         Extra files copied into the pipeline's extras/ folder
                            (comma-separated; repeatable)
-  --model <m>              Claude model id
-  --engine <name>          Agent harness for the pipeline's agent nodes: claude (default) | codex (beta) | copilot (beta) | cursor (beta) | gemini (beta) | goose (beta) | opencode (beta) | qwen (beta)
+  --model <m>              Model id of the run's harness
+  --engine <name>          Agent harness for the pipeline's agent nodes: codex (default) | claude | copilot (beta) | cursor (beta) | gemini (beta) | goose (beta) | opencode (beta) | qwen (beta)
   --allow-unguarded-engine Run on an engine that cannot fully enforce the guardrail set's permission rules
   --guardrails <id>        Guardrail set the run uses: permissive | normal | secure (Strict) | a saved set's id
                            (default: the install's default set, Normal on a new install)

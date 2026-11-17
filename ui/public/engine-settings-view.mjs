@@ -127,7 +127,7 @@ export function renderEngineSection(host, options) {
   const noEffort = new Set(options.noEffort || []);
   // The tab shown first: the default engine's.
   const runEngine = run.own ?? run.inherited?.value;
-  const first = MODEL_ENGINE_NAMES.includes(runEngine) ? runEngine : 'claude';
+  const first = MODEL_ENGINE_NAMES.includes(runEngine) ? runEngine : DEFAULT_ENGINE;
   const cards = {};
   const sw = engineSwitch(doc, MODEL_ENGINE_NAMES, (engine) => pick(engine));
   // A titled block under a rule: the switch picks which engine's models show; it is not part of Default engine.

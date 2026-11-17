@@ -12,7 +12,7 @@ export const NIGHT_TOGGLES = Object.freeze(['auto', 'on', 'off']);
 export const NIGHT_ACTOR = 'night-mode';
 /** The decider's effort levels: a copy of model-env.mjs EFFORTS (this leaf imports nothing;
  *  test/night-decider-model.test.mjs pins the two equal). */
-export const NIGHT_EFFORTS = Object.freeze(['medium', 'high', 'xhigh', 'max']);
+export const NIGHT_EFFORTS = Object.freeze(['medium', 'high', 'xhigh', 'max', 'ultra']);   // ultra: Codex models that list it (the decider drops an effort its model does not offer)
 /** The effort the decider runs at when none is set (what it always ran at before). */
 export const NIGHT_DEFAULT_EFFORT = 'medium';
 const MODEL_ID_MAX_LEN = 200;   // settings.mjs TITLE_MODEL_MAX_LEN
