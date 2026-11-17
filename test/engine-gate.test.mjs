@@ -154,46 +154,51 @@ test('codex refuses a run while the credential broker is on (it signs in with it
   }
 });
 
-test('codex names each server it cannot attach with its reason: remote, a name it cannot use, or both grouped', () => {
+test('codex names each server it cannot attach with its reason: remote over SSE, a name it cannot use, or both grouped', () => {
   const o = orch({ engine: 'codex' });
   const HTTP = { type: 'http', url: 'https://mcp.example/' };
+  const SSE = { type: 'sse', url: 'https://mcp.example/sse' };
   const STDIO = { command: 'node' };
   const refuse = (servers) => o._engineMcpRefusal({ copies: Object.keys(servers).map((name) => ({ name })), servers });
-  assert.equal(refuse({ web: HTTP, sse: { type: 'sse', url: 'https://mcp.example/sse' } }),
-    'this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: web, sse');
+  // A streamable HTTP server is attached (typed http, or a bare url); only the SSE one is named.
+  assert.equal(refuse({ web: HTTP, bare: { url: 'https://mcp.example/mcp' } }), null);
+  assert.equal(refuse({ web: HTTP, sse: SSE }),
+    'this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: sse');
   assert.equal(refuse({ 'bad.name': STDIO }),
     'this run attaches MCP servers codex cannot attach — a name codex cannot use (only letters, digits, _ and -, at most 64 characters): bad.name');
-  assert.equal(refuse({ 'my server': STDIO, web: HTTP, 'x.y': HTTP }),
-    'this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: web, x.y; a name codex cannot use (only letters, digits, _ and -, at most 64 characters): my server',
-    'grouped by reason, remote first; a remote server with a bad name is named as remote');
+  assert.equal(refuse({ 'my server': STDIO, old: SSE, 'x.y': SSE, 'h.i': HTTP, web: HTTP }),
+    'this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: old, x.y; a name codex cannot use (only letters, digits, _ and -, at most 64 characters): my server, h.i',
+    'grouped by reason, remote first; an SSE server with a bad name is named as remote, an HTTP one by its name');
   const dir = tmp();
   const path = join(dir, 'mcp.json');
-  writeFileSync(path, JSON.stringify({ mcpServers: { ok: STDIO, 'bad.name': STDIO, web: HTTP, empty: {} } }));
-  assert.deepEqual(o._engineMcpWarnings({ mcpConfigPath: path, mcpServerNames: ['ok', 'bad.name', 'web', 'empty'] }), [
-    'engine codex: MCP servers not attached on codex — remote, and codex attaches stdio servers only: web; a name codex cannot use (only letters, digits, _ and -, at most 64 characters): bad.name; no command and no url: empty',
+  writeFileSync(path, JSON.stringify({ mcpServers: { ok: STDIO, 'bad.name': STDIO, web: HTTP, old: SSE, empty: {} } }));
+  assert.deepEqual(o._engineMcpWarnings({ mcpConfigPath: path, mcpServerNames: ['ok', 'bad.name', 'web', 'old', 'empty'] }), [
+    'engine codex: MCP servers not attached on codex — remote over SSE, and codex attaches stdio and streamable HTTP servers only: old; a name codex cannot use (only letters, digits, _ and -, at most 64 characters): bad.name; no command and no url: empty',
   ]);
 });
 
-test('codex attaches a registry layer\'s stdio copies and refuses its remote ones; claude and an empty layer pass', async () => {
+test('codex attaches a registry layer\'s stdio and streamable HTTP copies and refuses its SSE ones; claude and an empty layer pass', async () => {
   const STDIO = { command: process.execPath, args: ['/launch.mjs'] };
   const HTTP = { type: 'http', url: 'https://mcp.example/' };
+  const SSE = { type: 'sse', url: 'https://mcp.example/sse' };
   const layer = (copies, servers = {}) => async () => ({ result: { copies, servers }, catalog: {} });
   const o = orch({ engine: 'codex' });
-  o._resolveMcp = layer([{ name: 'sentry_billing', setName: 'Billing' }, { name: 'jira', setName: 'General' }], { sentry_billing: HTTP, jira: STDIO });
-  await assert.rejects(() => o._engineMcpGate(), /engine codex: this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: sentry_billing$/);
+  o._resolveMcp = layer([{ name: 'sentry_billing', setName: 'Billing' }, { name: 'jira', setName: 'General' }], { sentry_billing: SSE, jira: STDIO });
+  await assert.rejects(() => o._engineMcpGate(), /engine codex: this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: sentry_billing$/);
   // The run's own resolution refuses too (a resume's early look runs before its team policy).
-  assert.match(o._engineMcpRefusal({ copies: [{ name: 'pg' }], servers: { pg: HTTP } }), /codex cannot attach — remote, and codex attaches stdio servers only: pg$/);
+  assert.match(o._engineMcpRefusal({ copies: [{ name: 'pg' }], servers: { pg: SSE } }), /codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: pg$/);
   assert.equal(o._engineMcpRefusal({ copies: [{ name: 'pg' }], servers: { pg: STDIO } }), null, 'a stdio copy is attached');
+  assert.equal(o._engineMcpRefusal({ copies: [{ name: 'pg' }], servers: { pg: HTTP } }), null, 'a streamable HTTP copy is attached');
   const stdio = orch({ engine: 'codex' });
-  stdio._resolveMcp = layer([{ name: 'jira' }], { jira: STDIO });
+  stdio._resolveMcp = layer([{ name: 'jira' }, { name: 'web' }], { jira: STDIO, web: HTTP });
   await stdio._engineMcpGate();
   const none = orch({ engine: 'codex' });
   none._resolveMcp = layer([]);
   await none._engineMcpGate();
   const claude = orch();
-  claude._resolveMcp = layer([{ name: 'sentry_billing' }], { sentry_billing: HTTP });
+  claude._resolveMcp = layer([{ name: 'sentry_billing' }], { sentry_billing: SSE });
   await claude._engineMcpGate();
-  assert.equal(claude._engineMcpRefusal({ copies: [{ name: 'pg' }], servers: { pg: HTTP } }), null);
+  assert.equal(claude._engineMcpRefusal({ copies: [{ name: 'pg' }], servers: { pg: SSE } }), null);
 });
 
 test('a Claude model routed to a custom endpoint is dropped on codex like any Claude model, not refused', async () => {
@@ -480,7 +485,7 @@ test('the MCP layer refusal runs at run start and before a resume touches the pa
   const engine = ENGINES[0];
   const dir = tmp();
   execSync('git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init', { cwd: dir });
-  const withCopies = (o) => { o._resolveMcp = async () => ({ result: { copies: [{ name: 'sentry_billing', setName: 'Billing' }], servers: { sentry_billing: { type: 'http', url: 'https://mcp.example/' } } }, catalog: {} }); return o; };
+  const withCopies = (o) => { o._resolveMcp = async () => ({ result: { copies: [{ name: 'sentry_billing', setName: 'Billing' }], servers: { sentry_billing: { type: 'sse', url: 'https://mcp.example/sse' } } }, catalog: {} }); return o; };
   const claude = { mock: true, engine: 'codex' };
   const runners = (onProduce) => ({
     producer: async (ctx) => onProduce(ctx),
@@ -489,7 +494,7 @@ test('the MCP layer refusal runs at run start and before a resume touches the pa
   const ok = () => ({ status: 'ok', summary: 'ok' });
   const refused = await withCopies(engine.create({ projectDir: dir, prompt: 'demo', auto: true, guardrailsId: 'permissive', claude, runners: runners(ok) })).run();
   assert.equal(refused.status, 'error');
-  assert.match(refused.error, /engine codex: this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: sentry_billing/);
+  assert.match(refused.error, /engine codex: this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: sentry_billing/);
   // A paused codex run whose layer gained a copy since: the resume is refused and the row stays paused.
   let ref = null;
   ref = engine.create({ projectDir: dir, prompt: 'demo', auto: true, guardrailsId: 'permissive', claude, runners: runners((ctx) => {
@@ -502,7 +507,7 @@ test('the MCP layer refusal runs at run start and before a resume touches the pa
   assert.equal((await ref.run()).status, 'paused');
   const saved = readPipelineForResume(ref.state.id);
   await assert.rejects(() => withCopies(engine.create({ projectDir: dir, auto: true, claude, runners: runners(ok), resume: saved })).resume(),
-    /engine codex: this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: sentry_billing/);
+    /engine codex: this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: sentry_billing/);
   assert.equal(readPipelineForResume(ref.state.id).row.status, 'paused');
 });
 
@@ -596,34 +601,38 @@ test('engineStartRefusal answers before a run exists, and says when the consent 
 
 test('engineStartRefusal reports an MCP registry layer as not liftable', async () => {
   // The same stub as the MCP refusal test above (:84): _resolveMcp is the only seam.
-  const HTTP = { type: 'http', url: 'https://mcp.example/' };
-  const layer = (copies) => async () => ({ result: { copies, servers: Object.fromEntries(copies.map((c) => [c.name, HTTP])) }, catalog: {} });
+  const SSE = { type: 'sse', url: 'https://mcp.example/sse' };
+  const layer = (copies, srv = SSE) => async () => ({ result: { copies, servers: Object.fromEntries(copies.map((c) => [c.name, srv])) }, catalog: {} });
   const o = createOrchestrator({ projectDir: tmp(), claude: { mock: true, engine: 'codex', allowUnguardedEngine: true } });
   o._resolveMcp = layer([{ name: 'sentry_billing', setName: 'Billing' }]);
   assert.deepEqual(await o.engineStartRefusal(), {
-    error: 'engine codex: this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: sentry_billing',
+    error: 'engine codex: this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: sentry_billing',
     overridable: false,
   });
+  // A streamable HTTP copy is one codex attaches: nothing to refuse.
+  const http = createOrchestrator({ projectDir: tmp(), claude: { mock: true, engine: 'codex', allowUnguardedEngine: true } });
+  http._resolveMcp = layer([{ name: 'sentry_billing', setName: 'Billing' }], { type: 'http', url: 'https://mcp.example/' });
+  assert.equal(await http.engineStartRefusal(), null);
   // Rules AND copies: the consent would lift only the rules, so the answer is the copies, not liftable.
   const both = createOrchestrator({ projectDir: tmp(), guardrailsId: 'secure', claude: { mock: true, engine: 'codex' } });
   both._resolveMcp = layer([{ name: 'pg' }]);
   const r = await both.engineStartRefusal();
   assert.equal(r.overridable, false);
-  assert.match(r.error, /codex cannot attach — remote, and codex attaches stdio servers only: pg$/);
+  assert.match(r.error, /codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: pg$/);
 });
 
 test('engineStartRefusal sees the Team set\'s copies before the run resolves its policy (from the policy cache)', async () => {
-  const HTTP = { type: 'http', url: 'https://mcp.example/' };
-  const team = { home: 'acme/platform', required: [{ name: 'github', type: 'http', url: 'https://gh.example.com/mcp' }] };
+  const SSE = { type: 'sse', url: 'https://gh.example.com/sse' };
+  const team = { home: 'acme/platform', required: [{ name: 'github', type: 'sse', url: 'https://gh.example.com/sse' }] };
   const o = createOrchestrator({ projectDir: tmp(), claude: { mock: true, engine: 'codex' } });
   let asked = null;
   o._cachedTeam = async () => team;
   o._resolveMcp = async (_taken, opts) => {
     asked = opts;
-    return opts?.team ? { result: { copies: [{ name: 'github', setName: 'Team' }], servers: { github: HTTP } }, catalog: {} } : { result: { copies: [], servers: {} }, catalog: {} };
+    return opts?.team ? { result: { copies: [{ name: 'github', setName: 'Team' }], servers: { github: SSE } }, catalog: {} } : { result: { copies: [], servers: {} }, catalog: {} };
   };
   assert.deepEqual(await o.engineStartRefusal(), {
-    error: 'engine codex: this run attaches MCP servers codex cannot attach — remote, and codex attaches stdio servers only: github',
+    error: 'engine codex: this run attaches MCP servers codex cannot attach — remote over SSE, and codex attaches stdio and streamable HTTP servers only: github',
     overridable: false,
   });
   assert.deepEqual(asked, { team }, 'the cached Team set reaches the early look');

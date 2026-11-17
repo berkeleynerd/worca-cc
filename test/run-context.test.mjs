@@ -777,17 +777,17 @@ for (const engine of ['codex', 'copilot', 'cursor', 'goose']) test(`${engine}: t
 
 test('an approved committed server an engine cannot attach meets the same engine check as any other server', async () => {
   const { member, home, wt } = await committedMcpMember({ user: { enableAllProjectMcpServers: true } });
-  await writeFile(join(wt, '.mcp.json'), JSON.stringify({ mcpServers: { web: { type: 'http', url: 'https://mcp.example/' }, 'bad.name': { command: 'node' } } }), 'utf8');
+  await writeFile(join(wt, '.mcp.json'), JSON.stringify({ mcpServers: { web: { type: 'http', url: 'https://mcp.example/' }, old: { type: 'sse', url: 'https://mcp.example/sse' }, 'bad.name': { command: 'node' } } }), 'utf8');
   const lines = {};
   for (const engine of ['codex', 'copilot', 'cursor', 'goose']) {
     const rc = await assemble({ runRoot: await mkRunRoot(), members: [member], homeDir: home, engine, platform: 'darwin' });
-    assert.deepEqual(Object.keys(JSON.parse(await readFile(rc.mcpConfigPath, 'utf8')).mcpServers).sort(), ['a', 'bad.name', 'web'], engine);
+    assert.deepEqual(Object.keys(JSON.parse(await readFile(rc.mcpConfigPath, 'utf8')).mcpServers).sort(), ['a', 'bad.name', 'old', 'web'], engine);
     lines[engine] = createOrchestrator({ projectDir: member.projectDir, claude: { mock: true, engine } })._engineMcpWarnings(rc);
   }
-  assert.deepEqual(lines.codex, ['engine codex: MCP servers not attached on codex — remote, and codex attaches stdio servers only: web; a name codex cannot use (only letters, digits, _ and -, at most 64 characters): bad.name']);
+  assert.deepEqual(lines.codex, ['engine codex: MCP servers not attached on codex — remote over SSE, and codex attaches stdio and streamable HTTP servers only: old; a name codex cannot use (only letters, digits, _ and -, at most 64 characters): bad.name']);
   assert.deepEqual(lines.copilot, ['engine copilot: MCP servers not attached on copilot — a name copilot cannot use (only letters, digits, _ and -, at most 64 characters): bad.name']);
   assert.deepEqual(lines.cursor, [], 'cursor attaches every server of mcp.json');
-  assert.deepEqual(lines.goose, ['engine goose: MCP servers not attached on goose — remote, and goose attaches stdio servers only: web; a name goose cannot use (only letters, digits, _ and -, at most 64 characters): bad.name']);
+  assert.deepEqual(lines.goose, ['engine goose: MCP servers not attached on goose — remote, and goose attaches stdio servers only: old, web; a name goose cannot use (only letters, digits, _ and -, at most 64 characters): bad.name']);
 });
 
 test('codex: enableAllProjectMcpServers approves every committed server but a disabled one; the last layer to set it decides', async () => {

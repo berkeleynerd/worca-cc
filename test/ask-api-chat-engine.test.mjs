@@ -136,11 +136,14 @@ test('POST …/engine dryRun previews the switch and writes nothing (#943)', asy
 });
 
 test('POST …/engine dryRun names the PDFs and the MCP servers the destination cannot take (#943)', async (t) => {
-  // General holds one remote server: Claude attaches it, Codex takes stdio servers only (unattachableMcp).
+  // General holds two remote servers: Claude attaches both, Codex the streamable HTTP one and not the SSE one (unattachableMcp).
   const { addManualServer, putMember, deleteMember } = await import('../src/core/mcp/store.mjs');
-  const def = await addManualServer('docs', { type: 'http', url: 'https://docs.example.com/mcp', fields: [] });
+  const def = await addManualServer('docs', { type: 'sse', url: 'https://docs.example.com/sse', fields: [] });
   await putMember('general', 'manual:docs', { enabled: true, values: {} }, { def });
   t.after(() => deleteMember('general', 'manual:docs'));
+  const web = await addManualServer('wiki', { type: 'http', url: 'https://wiki.example.com/mcp', fields: [] });
+  await putMember('general', 'manual:wiki', { enabled: true, values: {} }, { def: web });
+  t.after(() => deleteMember('general', 'manual:wiki'));
   const th = store.createThread();
   store.updateThread(th.id, { model: 'claude-opus-5-5', effort: 'high', engine: 'claude' });
   const user = store.appendMessage(th.id, { role: 'user', text: 'read these' });
@@ -150,7 +153,7 @@ test('POST …/engine dryRun names the PDFs and the MCP servers the destination 
   const r = await SWITCH(th.id, { engine: 'codex', model: 'gpt-5.5', effort: 'low', dryRun: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.attachments, [{ id: pdf.id, name: 'spec.pdf' }], 'the PDF only: Codex reads text');
-  assert.deepEqual(r.body.mcpLost, ['docs'], 'the remote server Codex cannot start');
+  assert.deepEqual(r.body.mcpLost, ['docs'], 'the SSE server Codex cannot attach; the HTTP one travels');
   assert.deepEqual(store.getThread(th.id).engine, 'claude');
 });
 

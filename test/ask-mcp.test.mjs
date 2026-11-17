@@ -131,23 +131,25 @@ test('askMcpJoinNotice (D17): names the copies a new worktree brings, per projec
     'a worktree on a member of the workspace in play joins nothing');
 });
 
-test('mcpForEngine: a locked-down chat keeps the copies its engine attaches; the rest are skipped with the reason', async () => {
+test('mcpForEngine: a locked-down chat keeps the copies its engine attaches (Codex: stdio and streamable HTTP); the rest are skipped with the reason', async () => {
   const { mcpForEngine } = await import('../src/core/ask/mcp.mjs');
   const { skipReasonText } = await import('../src/core/mcp/registry.mjs');
   const r = {
-    servers: { local: { type: 'stdio', command: 'node', args: [] }, web: { type: 'http', url: 'https://x.example/mcp' } },
-    env: {}, secretValues: [], grants: ['mcp__local', 'mcp__web'], disallowedTools: ['mcp__web__a_very_long_tool'],
-    copies: [{ name: 'local', copy: 'local', setId: 'general', setName: 'General', serverId: 's1' }, { name: 'web', copy: 'web', setId: 'general', setName: 'General', serverId: 's2' }],
-    skipped: [], skippedTools: [{ name: 'web', tool: 'a_very_long_tool', reason: 'tool-name-too-long:a_very_long_tool' }], sets: [],
+    servers: { local: { type: 'stdio', command: 'node', args: [] }, web: { type: 'http', url: 'https://x.example/mcp' }, old: { type: 'sse', url: 'https://x.example/sse' } },
+    env: {}, secretValues: [], grants: ['mcp__local', 'mcp__web', 'mcp__old'], disallowedTools: ['mcp__web__a_very_long_tool', 'mcp__old__a_very_long_tool'],
+    copies: [{ name: 'local', copy: 'local', setId: 'general', setName: 'General', serverId: 's1' }, { name: 'web', copy: 'web', setId: 'general', setName: 'General', serverId: 's2' },
+      { name: 'old', copy: 'old', setId: 'general', setName: 'General', serverId: 's3' }],
+    skipped: [], skippedTools: [{ name: 'web', tool: 'a_very_long_tool', reason: 'tool-name-too-long:a_very_long_tool' }, { name: 'old', tool: 'a_very_long_tool', reason: 'tool-name-too-long:a_very_long_tool' }], sets: [],
   };
   assert.equal(mcpForEngine(r, 'claude'), r, 'Claude attaches every copy');
   assert.equal(mcpForEngine(r, 'gemini'), r, 'Gemini CLI attaches stdio and http servers');
   const codex = mcpForEngine(r, 'codex');
-  assert.deepEqual(Object.keys(codex.servers), ['local']);
-  assert.deepEqual(codex.copies.map((c) => c.name), ['local']);
-  assert.deepEqual(codex.grants, ['mcp__local']);
-  assert.deepEqual(codex.disallowedTools, []);
-  assert.deepEqual(codex.skippedTools, []);
-  assert.deepEqual(codex.skipped, [{ setId: 'general', setName: 'General', serverId: 's2', copy: 'web', reason: 'engine-remote' }]);
-  assert.match(skipReasonText(codex.skipped[0], []), /attaches local \(stdio\) servers only/);
+  // Codex attaches the stdio and the streamable HTTP copy; only the SSE one is skipped.
+  assert.deepEqual(Object.keys(codex.servers), ['local', 'web']);
+  assert.deepEqual(codex.copies.map((c) => c.name), ['local', 'web']);
+  assert.deepEqual(codex.grants, ['mcp__local', 'mcp__web']);
+  assert.deepEqual(codex.disallowedTools, ['mcp__web__a_very_long_tool']);
+  assert.deepEqual(codex.skippedTools, [{ name: 'web', tool: 'a_very_long_tool', reason: 'tool-name-too-long:a_very_long_tool' }]);
+  assert.deepEqual(codex.skipped, [{ setId: 'general', setName: 'General', serverId: 's3', copy: 'old', reason: 'engine-remote' }]);
+  assert.equal(skipReasonText(codex.skipped[0], []), "a remote server of a kind this chat's engine does not attach (Codex takes streamable HTTP servers, not SSE)");
 });

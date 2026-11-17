@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, chmodSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  buildCodexArgs, createCodexNormalizer, codexMcpOverrides, mcpResultText, codexModelPriced, codexResumeNotFound,
+  buildCodexArgs, createCodexNormalizer, codexMcpOverrides, codexRemoteMcp, codexMcpProblems, mcpResultText, codexModelPriced, codexResumeNotFound,
   CODEX_ASK_LOCKDOWN, CODEX_ASK_FEATURES, CODEX_DEFAULT_MODEL, runCodexProcess, codexCapabilities, codexAskSupport, parseCodexFeatures,
   codexRolloutUsage, estimateCodexCostUsd, expandMcpRefs,
 } from '../src/core/engines/codex.mjs';
@@ -157,22 +157,33 @@ test('runCodexProcess: an Ask lockdown spawn reads the MCP config, keeps its env
   assert.equal(fake.env().CODEX_TEST_MARK, '1');
 });
 
-test('runCodexProcess: a pipeline spawn attaches its stdio servers, fills ${VAR} refs from the spawn env, redacts the secrets, skips remote ones', POSIX, async () => {
+test('runCodexProcess: a pipeline spawn attaches its stdio and streamable HTTP servers, fills ${VAR} refs from the spawn env, redacts the secrets, skips SSE ones', POSIX, async () => {
   const dir = tmp();
   const fake = fakeCodex(dir, 'answer tok-SECRET');
   const cfg = join(dir, 'mcp.json');
   writeFileSync(cfg, JSON.stringify({ mcpServers: {
     pg: { type: 'stdio', command: process.execPath, args: ['/launch.mjs', '--copy', 'pg'], env: { MCPCHILD_PGPASS: '${MCPSECRET_PG}', PLAIN: 'x' } },
-    web: { type: 'http', url: 'https://mcp.example/' },
+    web: { type: 'http', url: 'https://mcp.example/${MCP_TEST_PATH:-mcp}', headers: { Authorization: 'Bearer ${MCPSECRET_WEB}', 'X-Api-Key': '${MCPSECRET_WEBKEY}' } },
+    old: { type: 'sse', url: 'https://mcp.example/sse', headers: { Authorization: 'Bearer ${MCPSECRET_WEB}' } },
   } }));
   const events = [];
-  const res = await runCodexProcess({ cwd: dir, bin: fake.bin, prompt: 'P', mcpConfigPath: cfg, spawnEnv: { MCPSECRET_PG: 'tok-SECRET' },
-    redactValues: ['tok-SECRET'], onEvent: (e) => events.push(e), usageDir: dir });
+  const res = await runCodexProcess({ cwd: dir, bin: fake.bin, prompt: 'P', mcpConfigPath: cfg, spawnEnv: { MCPSECRET_PG: 'tok-SECRET', MCPSECRET_WEB: 'web-SECRET', MCPSECRET_WEBKEY: 'key-SECRET' },
+    redactValues: ['tok-SECRET', 'web-SECRET', 'key-SECRET'], onEvent: (e) => events.push(e), usageDir: dir });
   const args = fake.args();
   assert.ok(args.includes('mcp_servers.pg.required=true'));
-  assert.equal(args.some((a) => a.startsWith('mcp_servers.web.')), false, 'codex takes stdio servers only');
-  assert.ok(events.some((e) => e.type === 'stderr' && /not attached on codex — remote, and codex attaches stdio servers only: web$/.test(e.text)));
-  assert.equal(args.join(' ').includes('tok-SECRET'), false, 'values never ride argv');
+  // The streamable HTTP server: its url on argv, its header values in codex's env under worca's own names.
+  assert.ok(args.includes('mcp_servers.web.url="https://mcp.example/mcp"'), args.join('\n'));
+  assert.ok(args.includes('mcp_servers.web.bearer_token_env_var="WORCA_MCP_HTTP_0"'));
+  assert.ok(args.includes('mcp_servers.web.env_http_headers={"X-Api-Key"="WORCA_MCP_HTTP_1"}'));
+  assert.ok(args.includes('mcp_servers.web.required=true'));
+  assert.equal(fake.env().WORCA_MCP_HTTP_0, 'web-SECRET', 'the Bearer token, without its scheme');
+  assert.equal(fake.env().WORCA_MCP_HTTP_1, 'key-SECRET');
+  assert.equal(fake.env().MCPSECRET_WEB, undefined);
+  const pgVars = args.find((a) => a.startsWith('mcp_servers.pg.env_vars='));
+  assert.equal(/WORCA_MCP_HTTP_/.test(pgVars), false, 'a stdio server is never handed the remote server\'s header values');
+  assert.equal(args.some((a) => a.startsWith('mcp_servers.old.')), false, 'an SSE server is not attached');
+  assert.ok(events.some((e) => e.type === 'stderr' && /not attached on codex — remote over SSE, and codex attaches stdio and streamable HTTP servers only: old$/.test(e.text)));
+  for (const secret of ['tok-SECRET', 'web-SECRET', 'key-SECRET']) assert.equal(args.join(' ').includes(secret), false, 'values never ride argv');
   assert.equal(fake.env().MCPCHILD_PGPASS, 'tok-SECRET', 'the reference is filled from the spawn env');
   assert.equal(fake.env().MCPSECRET_PG, undefined, 'the secret reaches codex only through the reference');
   assert.equal(res.text.includes('tok-SECRET'), false, 'the reply is redacted');
@@ -226,6 +237,60 @@ test('codexMcpOverrides: one server never gets another\'s env, and a clash in th
   assert.ok(args.includes('mcp_servers.a.env_vars=["A_KEY","PATH"]'));
   assert.ok(args.includes('mcp_servers.b.env_vars=["B_KEY","PATH"]'));
   assert.throws(() => codexMcpOverrides({ a: { command: 'x', env: { K: '1' } }, b: { command: 'y', env: { K: '2' } } }), /K with different values/);
+});
+
+test('codexRemoteMcp / codexMcpProblems: a streamable HTTP server is attachable; SSE, a non-http url and a bad name are not', () => {
+  const HTTP = { type: 'http', url: 'https://mcp.example/mcp' };
+  assert.equal(codexRemoteMcp(HTTP), true);
+  assert.equal(codexRemoteMcp({ url: ' https://mcp.example/mcp ' }), true, 'a bare url is streamable HTTP');
+  assert.equal(codexRemoteMcp({ type: 'streamable-http', url: 'http://127.0.0.1:9/mcp' }), true);
+  assert.equal(codexRemoteMcp({ type: 'sse', url: 'https://mcp.example/sse' }), false);
+  assert.equal(codexRemoteMcp({ transport: 'SSE', url: 'https://mcp.example/sse' }), false);
+  assert.equal(codexRemoteMcp({ type: 'http', url: 'ws://mcp.example/' }), false);
+  assert.equal(codexRemoteMcp({ type: 'http' }), false);
+  assert.equal(codexRemoteMcp({ command: 'node' }), false, 'a stdio server is not a remote one');
+  assert.equal(codexRemoteMcp(null), false);
+  assert.deepEqual(codexMcpProblems({
+    ok: { command: 'node' }, web: HTTP, 'bad.web': HTTP, old: { type: 'sse', url: 'https://mcp.example/sse' },
+    'bad.old': { type: 'sse', url: 'https://mcp.example/sse' }, ws: { url: 'ws://mcp.example/' }, empty: {}, 'bad name': { command: 'x' },
+  }), [
+    { name: 'bad.web', reason: 'name' }, { name: 'old', reason: 'remote' }, { name: 'bad.old', reason: 'remote' },
+    { name: 'ws', reason: 'remote' }, { name: 'empty', reason: 'incomplete' }, { name: 'bad name', reason: 'name' },
+  ]);
+});
+
+test('codexMcpOverrides: an HTTP server rides as url; a Bearer token as bearer_token_env_var, other headers as env_http_headers, values in the env only', () => {
+  const { args, env } = codexMcpOverrides({
+    docs: { type: 'http', url: ' https://mcp.example/mcp ', headers: { Authorization: 'Bearer tok-SECRET', 'X-Api-Key': 'key-SECRET', 'bad header': 'dropped-SECRET', 'X-Num': 7 } },
+    basic: { url: 'https://other.example/', headers: { authorization: 'Basic dXNlcjpwYXNz' } },
+    plain: { type: 'http', url: 'https://plain.example/mcp' },
+    old: { type: 'sse', url: 'https://mcp.example/sse', headers: { Authorization: 'Bearer sse-SECRET' } },
+    local: { command: 'node', env: { L: '1' } },
+  }, { passEnv: ['PATH', 'WORCA_MCP_HTTP_0', 'WORCA_MCP_HTTP_1', 'WORCA_MCP_HTTP_2'], disabledTools: { docs: ['delete_page'] } });
+  assert.deepEqual(env, { WORCA_MCP_HTTP_0: 'tok-SECRET', WORCA_MCP_HTTP_1: 'key-SECRET', WORCA_MCP_HTTP_2: 'Basic dXNlcjpwYXNz', L: '1' });
+  const tail = (n) => ['-c', `mcp_servers.${n}.required=true`, '-c', `mcp_servers.${n}.startup_timeout_sec=30`,
+    '-c', `mcp_servers.${n}.tool_timeout_sec=1800`, '-c', `mcp_servers.${n}.default_tools_approval_mode="approve"`];
+  assert.deepEqual(args, [
+    '-c', 'mcp_servers.docs.url="https://mcp.example/mcp"',
+    '-c', 'mcp_servers.docs.bearer_token_env_var="WORCA_MCP_HTTP_0"',
+    '-c', 'mcp_servers.docs.env_http_headers={"X-Api-Key"="WORCA_MCP_HTTP_1"}',
+    '-c', 'mcp_servers.docs.disabled_tools=["delete_page"]', ...tail('docs'),
+    '-c', 'mcp_servers.basic.url="https://other.example/"',
+    '-c', 'mcp_servers.basic.env_http_headers={"authorization"="WORCA_MCP_HTTP_2"}', ...tail('basic'),
+    '-c', 'mcp_servers.plain.url="https://plain.example/mcp"', ...tail('plain'),
+    '-c', 'mcp_servers.local.command="node"', '-c', 'mcp_servers.local.args=[]',
+    // The header slots are in codex's env (passEnv) and are still not handed to a stdio server.
+    '-c', 'mcp_servers.local.env_vars=["L","PATH"]', ...tail('local'),
+  ]);
+  for (const secret of ['tok-SECRET', 'key-SECRET', 'dropped-SECRET', 'sse-SECRET', 'dXNlcjpwYXNz']) assert.equal(args.join(' ').includes(secret), false, secret);
+  assert.equal(JSON.stringify(env).includes('sse-SECRET'), false, 'an SSE server contributes nothing');
+});
+
+test('expandMcpRefs: a remote server\'s url keeps registry secret refs as written, its header values are filled', () => {
+  const out = expandMcpRefs({ web: { type: 'http', url: 'https://${HOST:-mcp.example}/mcp?k=${MCPSECRET_K}', headers: { Authorization: 'Bearer ${MCPSECRET_K}', 'X-Org': '${ORG}' } } },
+    { ORG: 'acme', MCPSECRET_K: 'tok' });
+  assert.equal(out.web.url, 'https://mcp.example/mcp?k=${MCPSECRET_K}');
+  assert.deepEqual(out.web.headers, { Authorization: 'Bearer tok', 'X-Org': 'acme' });
 });
 
 test('runCodexProcess: no model names CODEX_DEFAULT_MODEL, so the turn is priced', POSIX, async () => {

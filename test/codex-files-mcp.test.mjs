@@ -112,12 +112,12 @@ test('runNightAnalysis on Claude is unchanged: no engine, no MCP config, Claude\
 test('a Codex run says which merged MCP servers its agents will not get; a Claude run says nothing', () => {
   const dir = tmp();
   const path = join(dir, 'mcp.json');
-  writeFileSync(path, JSON.stringify({ mcpServers: { pg: { command: 'x' }, web: { type: 'http', url: 'https://mcp.example/' } } }));
-  const rc = { mcpConfigPath: path, mcpServerNames: ['pg', 'web', 'native_one'] };
+  writeFileSync(path, JSON.stringify({ mcpServers: { pg: { command: 'x' }, web: { type: 'http', url: 'https://mcp.example/' }, old: { type: 'sse', url: 'https://mcp.example/sse' } } }));
+  const rc = { mcpConfigPath: path, mcpServerNames: ['pg', 'web', 'old', 'native_one'] };
   const codex = createOrchestrator({ projectDir: dir, claude: { mock: true, engine: 'codex' } });
   assert.deepEqual(codex._engineMcpWarnings(rc), [
     'engine codex: MCP servers Claude Code loads on its own are not attached on codex: native_one',
-    'engine codex: MCP servers not attached on codex — remote, and codex attaches stdio servers only: web',
+    'engine codex: MCP servers not attached on codex — remote over SSE, and codex attaches stdio and streamable HTTP servers only: old',
   ]);
   assert.deepEqual(createOrchestrator({ projectDir: dir, claude: { mock: true } })._engineMcpWarnings(rc), []);
 });
