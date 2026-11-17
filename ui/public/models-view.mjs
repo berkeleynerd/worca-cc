@@ -464,7 +464,7 @@ function envRow(doc, key = '', value = '') {
  * Returns detached DOM; app.js wires mv-save / mv-cancel / mv-env-add /
  * mv-env-rm and calls collectModelEditor on save.
  */
-export function renderModelEditor(model, efforts, { doc = globalThis.document, providers = null, copilotModels = [], codexEfforts = ['minimal', 'low', 'medium', 'high'], copilotEfforts = [], gooseEfforts = ['low', 'medium', 'high', 'max'], opencodeEfforts = ['minimal', 'low', 'medium', 'high', 'max'] } = {}) {
+export function renderModelEditor(model, efforts, { doc = globalThis.document, providers = null, copilotModels = [], codexEfforts = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], copilotEfforts = [], gooseEfforts = ['low', 'medium', 'high', 'max'], opencodeEfforts = ['minimal', 'low', 'medium', 'high', 'max'] } = {}) {
   const editing = !!model;
   const root = h(doc, 'section', 'card mv-editor');
   // Every engine's effort list rides the root so setModelEngine can swap them (§3.1a).

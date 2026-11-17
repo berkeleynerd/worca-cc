@@ -31,7 +31,7 @@ export const TEXT_MAX = 200;
 // settings.mjs UI_LEVELS (not importable here: the registry stays a leaf); test/policy-registry.test.mjs pins equality.
 const SETUP_UI_LEVELS = Object.freeze(['simple', 'advanced', 'expert']);
 // `EFFORTS` (below) is the Claude scale; Codex roles use this one.
-const ROLE_CODEX_EFFORTS = Object.freeze(['minimal', 'low', 'medium', 'high']);
+const ROLE_CODEX_EFFORTS = Object.freeze(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
 const GROUPS = Object.freeze({
   cost: 'Cost', ask: 'Chat', guardrails: 'Guardrails', models: 'Models', setup: 'Setup', plugins: 'Plugins', runs: 'Runs',

@@ -16,7 +16,7 @@ import { getDb, prepare, tx } from './db.mjs';
 import { projectKey } from './store.mjs';
 import { AUTO_WORKFLOW_ID } from './graph/builtin-workflows.mjs';
 import { loadAgentRegistry, registryToSteps } from './agent-registry.mjs';
-import { EFFORTS, CODEX_EFFORTS, ALL_EFFORTS, MODEL_ENGINES, COPILOT_MODEL_PREFIX, prepareModelEnv, withTierModelEnv, withProviderModesOff, PROVIDER_MODE_ENV_KEYS, isSubagentModelValue, subagentModelIssue, BRIDGE_ROUTING_KEYS, bridgeExcludedTools, isTranslatedApi } from './model-env.mjs';
+import { EFFORTS, CODEX_EFFORTS, CODEX_MODEL_EFFORTS, ALL_EFFORTS, MODEL_ENGINES, COPILOT_MODEL_PREFIX, prepareModelEnv, withTierModelEnv, withProviderModesOff, PROVIDER_MODE_ENV_KEYS, isSubagentModelValue, subagentModelIssue, BRIDGE_ROUTING_KEYS, bridgeExcludedTools, isTranslatedApi } from './model-env.mjs';
 import { findBridgedEntry, providerReadiness } from './bridge/registry.mjs';
 import { engineLabel } from '../shared/engine-switch.mjs';
 import { normaliseTags } from '../shared/run-tags.mjs';
@@ -114,8 +114,10 @@ export function codexModelLabel(id) {
   const word = (w) => (w ? w[0].toUpperCase() + w.slice(1) : w);
   return `GPT-${version}${rest.length ? ` ${rest.map(word).join(' ')}` : ''}`;
 }
-export const CODEX_BUILTIN_MODELS = Object.freeze(Object.keys(CODEX_PRICES).map((id) => Object.freeze({
-  id, label: codexModelLabel(id), efforts: Object.freeze([...CODEX_EFFORTS]),
+// The models the Codex CLI lists (codex-cli 0.169 `codex debug models`, visibility `list`), each with the efforts it
+// takes. A model with a list price and no row here (an older one) keeps the engine's full list.
+export const CODEX_BUILTIN_MODELS = Object.freeze([...new Set([...Object.keys(CODEX_MODEL_EFFORTS), ...Object.keys(CODEX_PRICES)])].map((id) => Object.freeze({
+  id, label: codexModelLabel(id), efforts: Object.freeze([...(CODEX_MODEL_EFFORTS[id] || CODEX_EFFORTS)]),
 })));
 // The models `copilot --model` takes (`copilot help config`, GitHub Copilot CLI 1.0.100), as Copilot sign-in rows.
 // Their efforts are the ones every Copilot model was seen to take; a model that refuses one says so in its turn.

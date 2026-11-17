@@ -79,7 +79,7 @@ export function harnessesLabel(m) {
 // Effort vocabularies per harness (model-env.mjs EFFORTS / CODEX_EFFORTS / CURSOR_EFFORTS / COPILOT_EFFORTS / GOOSE_EFFORTS / OPENCODE_EFFORTS / GEMINI_EFFORTS / QWEN_EFFORTS; kept equal by a test).
 export const HARNESS_EFFORTS = Object.freeze({
   claude: Object.freeze(['medium', 'high', 'xhigh', 'max']),
-  codex: Object.freeze(['minimal', 'low', 'medium', 'high']),
+  codex: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']),
   cursor: Object.freeze([]),
   copilot: Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
   gemini: Object.freeze(['low', 'medium', 'high']),
@@ -95,7 +95,7 @@ export function effortOn(effort, engine) {
   if (!effort || !list) return effort || null;
   if (!list.length) return null;
   if (list.includes(effort)) return effort;
-  const rank = { none: -1, minimal: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
+  const rank = { none: -1, minimal: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5, ultra: 6 };
   if (!(effort in rank)) return null;
   return list.reduce((best, e) => (Math.abs(rank[e] - rank[effort]) < Math.abs(rank[best] - rank[effort]) ? e : best), list[0]);
 }

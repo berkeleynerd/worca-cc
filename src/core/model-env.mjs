@@ -18,7 +18,17 @@ import { ENGINES, ENGINE_NAMES, MODEL_ENGINE_NAMES, SIGN_IN_ENGINE_NAMES, CHAT_E
  *  re-exports it) so settings.mjs can validate a catalog entry's `efforts`
  *  without importing the core graph. */
 export const EFFORTS = ['medium', 'high', 'xhigh', 'max'];
-export const CODEX_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+/** Codex's reasoning efforts, as codex-cli 0.169 lists them across its models (`codex debug models`). Not every
+ *  model takes every one: a built-in's own list is in CODEX_MODEL_EFFORTS. `minimal` is no longer offered by any model. */
+export const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+/** The efforts each built-in Codex model takes (codex-cli 0.169 `codex debug models`, supported_reasoning_levels). */
+export const CODEX_MODEL_EFFORTS = Object.freeze({
+  'gpt-6-astra': CODEX_EFFORTS, 'gpt-6.1-sol': CODEX_EFFORTS, 'gpt-6.1-terra': CODEX_EFFORTS, 'gpt-6-sol': CODEX_EFFORTS,
+  'gpt-6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-5.6-sol': CODEX_EFFORTS, 'gpt-5.6-terra': CODEX_EFFORTS,
+  'gpt-5.6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-5.5': ['low', 'medium', 'high', 'xhigh'],
+});
 /** Cursor has no effort flag (engines/cursor.mjs capability `effort: false`). */
 export const CURSOR_EFFORTS = [];
 /** Goose's GOOSE_THINKING_EFFORT values (engines/goose.mjs); the provider decides what each one does. */
@@ -469,7 +479,7 @@ export const CAPABILITY_FLAGS = Object.freeze(['toolCalls', 'vision', 'reasoning
 /** Numeric capability limits an entry may pin. */
 export const CAPABILITY_LIMITS = Object.freeze(['maxPromptTokens', 'maxOutputTokens']);
 /** Reasoning-effort levels an upstream may list, lowest first (capabilities.reasoningEfforts). */
-export const REASONING_EFFORT_LEVELS = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+export const REASONING_EFFORT_LEVELS = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 /** List-valued capabilities an entry may pin. */
 export const CAPABILITY_LISTS = Object.freeze(['reasoningEfforts']);
 const FORBIDDEN_UPSTREAM_HEADERS = new Set(['authorization', 'host', 'content-length', 'content-type', 'transfer-encoding']);

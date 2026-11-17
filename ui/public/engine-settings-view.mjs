@@ -5,7 +5,7 @@ import { applyEngineLocks, engineLock } from './engine-locks.mjs';
 import { MODEL_ROLES, ROLE_LABELS, ROLE_HINTS, ROLE_HARNESSES, roleOfSettingId } from '../../src/shared/model-roles.mjs';
 const roleLabelText = (role) => `From ${ROLE_LABELS[role]}`;
 // The own-sign-in engines have no effort flag, except Goose and OpenCode.
-export const ENGINE_EFFORTS = Object.freeze({ claude: Object.freeze(['medium', 'high', 'xhigh', 'max']), codex: Object.freeze(['minimal', 'low', 'medium', 'high']),
+export const ENGINE_EFFORTS = Object.freeze({ claude: Object.freeze(['medium', 'high', 'xhigh', 'max']), codex: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']),
   copilot: Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
   ...Object.fromEntries(SIGN_IN_ENGINE_NAMES.map((e) => [e, Object.freeze([])])),
   goose: Object.freeze(['low', 'medium', 'high', 'max']), opencode: Object.freeze(['minimal', 'low', 'medium', 'high', 'max']),

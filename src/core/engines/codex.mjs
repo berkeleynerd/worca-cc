@@ -291,7 +291,7 @@ export function codexRolloutUsage(home, thread) {
 
 /** The codex agent role worca's fan-out dispatches (`spawn_agent` with this `agent_type`). */
 export const CODEX_INVESTIGATOR_ROLE = 'worca_investigator';
-const CODEX_EFFORTS = Object.freeze(['minimal', 'low', 'medium', 'high', 'xhigh']);
+const CODEX_EFFORTS = Object.freeze(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const DEFAULT_INVESTIGATOR_PROMPT = 'You are a read-only investigator dispatched by a worca pipeline agent. Investigate exactly what you were asked, in the directories you were given. Never edit, write, commit, branch or spawn sub-agents. Report concrete findings with file paths, then stop.';
 
 /**
@@ -309,7 +309,7 @@ export function codexInvestigatorRole({ agents, subagentSystemPrompt, inheritMod
   // On a custom endpoint the role inherits the parent's model with its provider: a built-in id would go to the endpoint.
   const model = !inheritModel && codexModelPriced(def?.model) && def?.model ? def.model : null;
   if (model) lines.push(`model = ${tomlString(model)}`);
-  const effort = def?.effort === 'max' ? 'xhigh' : def?.effort;
+  const effort = def?.effort;
   if (CODEX_EFFORTS.includes(effort)) lines.push(`model_reasoning_effort = ${tomlString(effort)}`);
   return { description: typeof def?.description === 'string' && def.description ? def.description : 'Read-only investigator for one area; reports its findings to the agent that dispatched it.',
     toml: `${lines.join('\n')}\n`, model };
