@@ -1,10 +1,10 @@
 // test/requirements-interview.test.mjs — orientation + rounds with a fake runner; never a real claude (design §4, D7-D9, D13).
 import { test, after, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { useTempHome } from './helpers/temp-home.mjs';
 import {
   createFeature, getFeature, listTurns, updateFeature, appendTurn, setContext, getBrief, beginBrief, saveBriefResult, deleteBrief,
@@ -13,8 +13,10 @@ import {
 import { REPO_LOOK_TOOLS, REPO_LOOK_MAX_TURNS, REPO_LOOK_TIMEOUT_MS } from '../src/core/auto/classify.mjs';
 import {
   startOrientation, submitAnswers, finishInterview, followUp, maybeFollowUpFiles, retry, settled, isBusy, recoverInterrupted, requirementsModel, MAX_JOBS, interviewCallOptions, callModel,
-  userClaudeSignIn, interviewModel, DEFAULT_INTERVIEW_EFFORT, assertCapacity, holdSlot,
+  userClaudeSignIn, interviewModel, DEFAULT_INTERVIEW_EFFORT, assertCapacity, holdSlot, REQUIREMENTS_CODEX_MODEL, scratchDir,
 } from '../src/core/requirements/interview.mjs';
+import { CODEX_FILES_MCP_PATH, CODEX_FILES_SERVER } from '../src/core/engines/codex-files-mcp.mjs';
+import { helperEngineOfModel } from '../src/core/title.mjs';
 import { addAttachments, removeAttachment, readsSettled } from '../src/core/requirements/attachment-job.mjs';
 import { ATTACHMENT_SYSTEM_PROMPT } from '../src/core/requirements/attachments.mjs';
 import { requirementsWindowedSpendUsd } from '../src/core/cost-budget.mjs';
@@ -1007,6 +1009,93 @@ test('callModel: sends the built options plus signal and onEvent, and books the 
   const { signal, onEvent, ...rest } = seen[0];
   assert.ok(signal && typeof onEvent === 'function');
   assert.deepEqual(rest, interviewCallOptions('round', { cwd: '/c', prompt: 'P', model: 'm1' }));
+});
+
+// ── Requirements on Codex: a Codex model's call is run by codex, read-only, never handed to the claude CLI ──
+/** Deps whose model owner is injected (no catalog read) and whose runner records each call with the MCP config it was
+ *  handed, read while the call runs. */
+function codexDeps(reply = async () => ({ text: 'x' })) {
+  const calls = [];
+  const d = { userSignIn: () => false, engineOfModel: (m) => (/^gpt-/.test(m) ? 'codex' : null), runClaudeImpl: async (opts) => {
+    calls.push({ ...opts, mcpDoc: opts.mcpConfigPath ? JSON.parse(readFileSync(opts.mcpConfigPath, 'utf8')) : null });
+    opts.onEvent({ type: 'result', costUsd: 0.25, usage: null, text: 'x' });
+    return reply(opts);
+  } };
+  return { d, calls };
+}
+const mcpFiles = () => readdirSync(scratchDir()).filter((n) => /^mcp-requirements-/.test(n));
+
+test('callModel on a Codex model, a round: engine codex, the read-only sandbox, no tools and no MCP config, none of the claude CLI options', async () => {
+  const { d, calls } = codexDeps();
+  const out = await callModel(d, { kind: 'round', cwd: '/c', prompt: 'P', model: 'gpt-6-astra', timeoutMs: 5000, effort: 'high' });
+  assert.deepEqual([out.text, out.costUsd, out.events.map((e) => e.type), 'confinedRead' in out, 'readGuardDecisions' in out], ['x', 0.25, ['result'], false, false]);
+  const { signal, onEvent, mcpDoc, ...rest } = calls[0];
+  assert.ok(signal && typeof onEvent === 'function');
+  assert.equal(mcpDoc, null);
+  assert.deepEqual(rest, { cwd: '/c', systemPrompt: ROUND_SYSTEM_PROMPT, prompt: 'P', model: 'gpt-6-astra', engine: 'codex', sandbox: 'read-only', effort: 'high', spawnKind: 'aux' });
+  assert.deepEqual(mcpFiles(), []);
+});
+
+test('callModel on a Codex model, a look: worca\'s file tools rooted at the working directory, named in the prompt; the temp config is removed', async () => {
+  const { d, calls } = codexDeps();
+  const out = await callModel(d, { kind: 'look', cwd: repoDir, prompt: 'P', model: 'gpt-6-astra', timeoutMs: 5000 });
+  assert.equal('confinedRead' in out, false, 'a look is not a guarded read');
+  const c = calls[0];
+  assert.deepEqual([c.engine, c.sandbox, c.cwd, c.spawnKind], ['codex', 'read-only', repoDir, 'aux']);
+  assert.equal(c.systemPrompt, `${ORIENTATION_SYSTEM_PROMPT}\n\nYou have no shell. Read files only with the read_file, grep and glob tools, giving absolute paths under ${repoDir}.`);
+  assert.equal(dirname(c.mcpConfigPath), scratchDir());
+  assert.deepEqual(Object.keys(c.mcpDoc.mcpServers), [CODEX_FILES_SERVER]);
+  const srv = c.mcpDoc.mcpServers[CODEX_FILES_SERVER];
+  assert.deepEqual([srv.type, srv.command, srv.args.slice(-3)], ['stdio', process.execPath, [CODEX_FILES_MCP_PATH, '--root', repoDir]]);
+  for (const k of ['tools', 'allowedTools', 'modelEnv', 'permissionMode', 'readGuard', 'settingSources', 'strictMcpConfig']) assert.equal(k in c, false, k);
+  assert.equal(existsSync(c.mcpConfigPath), false, 'the temp config is gone');
+});
+
+test('callModel on a Codex model, a guarded read: the tools are rooted at the private folder of the copy, and that confinement is reported as confinedRead', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'worca-req-codexread-'));
+  const copy = join(dir, 'ratt_0123456789ab.pdf');
+  writeFileSync(copy, '%PDF-1.7\n');
+  const { d, calls } = codexDeps();
+  const out = await callModel(d, { kind: 'look', cwd: dir, prompt: 'P', model: 'gpt-6-astra', timeoutMs: 5000, tools: ['Read'], allowedTools: [`Read(/${copy})`],
+    readGuard: copy, permissionRules: { deny: ['Read(.env)'] }, noSessionPersistence: true, systemPrompt: 'READ' });
+  assert.equal(out.confinedRead, dir);
+  assert.equal('readGuardDecisions' in out, false, 'the file-read guard is a Claude Code hook: it did not run');
+  const c = calls[0];
+  assert.deepEqual(c.mcpDoc.mcpServers[CODEX_FILES_SERVER].args.slice(-2), ['--root', dir], 'the one root is the folder that holds only the copy');
+  assert.equal(c.mcpDoc.mcpServers[CODEX_FILES_SERVER].args.filter((a) => a === '--root').length, 1);
+  assert.equal(c.systemPrompt, `READ\n\nYou have no shell. Read files only with the read_file, grep and glob tools, giving absolute paths under ${dir}.`);
+  assert.deepEqual([c.engine, c.sandbox], ['codex', 'read-only']);
+  assert.equal(existsSync(c.mcpConfigPath), false);
+  assert.deepEqual(mcpFiles(), []);
+});
+
+test('callModel on a Codex model: a failed call still removes the temp config and carries the money spent; a Claude model keeps the claude CLI options', async () => {
+  let path = null;
+  const { d, calls } = codexDeps(async (opts) => { path = opts.mcpConfigPath; throw new Error('401 Unauthorized'); });
+  await assert.rejects(() => callModel(d, { kind: 'look', cwd: repoDir, prompt: 'P', model: 'gpt-6-astra', timeoutMs: 5000 }),
+    (err) => { assert.equal(err.costUsd, 0.25); return true; });
+  assert.ok(path);
+  assert.equal(existsSync(path), false);
+  // The same deps, a model of no other harness: the claude CLI call, untouched.
+  const ok = codexDeps();
+  await callModel(ok.d, { kind: 'look', cwd: repoDir, prompt: 'P', model: 'claude-opus-5-5', timeoutMs: 5000 });
+  const { signal, onEvent, mcpDoc, ...rest } = ok.calls[0];
+  assert.deepEqual(rest, interviewCallOptions('look', { cwd: repoDir, prompt: 'P', model: 'claude-opus-5-5' }));
+  assert.equal('engine' in rest, false);
+  assert.equal(calls.length, 1);
+});
+
+test('the Requirements default on a Codex-default install: REQUIREMENTS_CODEX_MODEL when the catalog lists it, else the first plain Opus; it is a Codex model', async () => {
+  const opus = [{ id: 'claude-opus-5-5[1m]' }, { id: 'claude-opus-5-5' }];
+  assert.equal(REQUIREMENTS_CODEX_MODEL, 'gpt-6-astra');
+  assert.equal(await requirementsModel(async () => [...opus, { id: 'gpt-6-astra' }]), 'gpt-6-astra');
+  assert.equal(await requirementsModel(async () => [...opus, { id: 'gpt-6-luna' }]), 'claude-opus-5-5');
+  assert.equal(await requirementsModel(async () => { throw new Error('no catalog'); }), undefined);
+  assert.equal(helperEngineOfModel(REQUIREMENTS_CODEX_MODEL, () => 'codex'), 'codex');
+  assert.deepEqual(await interviewModel({ listModels: async () => [...opus, { id: 'gpt-6-astra' }], interviewSlot: () => ({}) }),
+    { model: 'gpt-6-astra', effort: 'medium', source: 'default' });
+  assert.deepEqual(await interviewModel({ listModels: async () => [...opus, { id: 'gpt-6-astra' }], interviewSlot: () => ({ model: 'Claude-Opus-5-5', effort: 'high' }) }),
+    { model: 'claude-opus-5-5', effort: 'high', source: 'settings' });
 });
 
 // ── A1.1 Task 3: Worca's own system prompt, and no user plugins in a call ──

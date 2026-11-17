@@ -80,7 +80,7 @@ test('the whole flow in mock mode, with frames', async () => {
     assert.equal(typeof row.ready, 'number');
     assert.equal(row.latestRun, null);
     assert.ok(listed.lookCostUsd === null || typeof listed.lookCostUsd === 'number');
-    assert.match(listed.interview.model, /^claude-opus-/);
+    assert.equal(listed.interview.model, 'gpt-6-astra', 'nothing stored: the default harness\'s Requirements model (REQUIREMENTS_CODEX_MODEL)');
     assert.ok(listed.interview.label && listed.interview.label.length > 0);
     assert.equal(listed.interview.effort, 'medium');
     assert.equal(listed.interview.source, 'default');

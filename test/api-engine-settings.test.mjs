@@ -110,15 +110,20 @@ test('requirementsInterview with the requirements flag off: GET has neither key 
   assert.equal(requirementsInterviewSetting() ?? null, null, 'nothing stored');
 });
 
-test('POST /api/settings requirementsInterview: stored per user, echoed with its default, cleared by null', async (t) => {
+test('POST /api/settings requirementsInterview: stored per user (a Claude model), echoed with its default (the Codex model), cleared by null', async (t) => {
   reqFlagOn(t);
   const g = await get('/api/settings');
   assert.equal(g.body.requirementsInterview, null);
-  assert.match(g.body.requirementsInterviewDefault.model, /^claude-opus-/);
+  // Nothing stored: the interview runs on the default harness's model (interview.mjs REQUIREMENTS_CODEX_MODEL).
+  assert.equal(g.body.requirementsInterviewDefault.model, 'gpt-6-astra');
   assert.equal(g.body.requirementsInterviewDefault.effort, 'medium');
-  const r = await post('/api/settings', { requirementsInterview: { model: g.body.requirementsInterviewDefault.model, effort: 'high' } });
+  // The stored pair is the Claude tab's slot: it takes a Claude model.
+  const { listModels } = await import('../src/core/config.mjs');
+  const opus = (await listModels('')).find((x) => /^claude-opus-/.test(x.id) && !x.id.includes('[')).id;
+  const r = await post('/api/settings', { requirementsInterview: { model: opus, effort: 'high' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.requirementsInterview, { model: g.body.requirementsInterviewDefault.model, effort: 'high' });
+  assert.deepEqual(r.body.requirementsInterview, { model: opus, effort: 'high' });
+  assert.equal(r.body.requirementsInterviewDefault.model, 'gpt-6-astra', 'the default is what an unset slot uses, whatever is stored');
   assert.equal(r.body.requirementsInterviewDefault.effort, 'medium');
   assert.deepEqual((await get('/api/settings')).body.requirementsInterview, r.body.requirementsInterview);
   const c = await post('/api/settings', { requirementsInterview: null });

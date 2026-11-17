@@ -207,6 +207,33 @@ test('the same stream with the decision logged for its tool call is done', async
   assert.deepEqual([getAttachment(row.id).status, getAttachment(row.id).summary], ['done', 'Two tickets.']);
 });
 
+test('a read on a Codex model: run by codex with worca\'s file tools rooted at the private folder; that confinement stands in for the guard\'s decision log', async () => {
+  const f = feature();
+  const calls = [];
+  // No readGuardDecisions and several turns: on the claude CLI this is a discarded read (the test below).
+  const runClaudeImpl = async (o) => {
+    calls.push({ ...o, names: readdirSync(o.cwd), mcpDoc: JSON.parse(readFileSync(o.mcpConfigPath, 'utf8')) });
+    o.onEvent({ type: 'tool', calls: [{ name: 'mcp__worca_files__read_file', input: { path: join(o.cwd, readdirSync(o.cwd)[0]) }, toolUseId: 'c1' }] });
+    o.onEvent({ type: 'result', costUsd: 0.1, numTurns: 3, text: '{"summary":"A PDF, read on Codex."}' });
+    return { text: '{"summary":"A PDF, read on Codex."}' };
+  };
+  const [row] = job.addAttachments(own(f), [pdfFile('codex.pdf', Buffer.from('%PDF-1.7\ncodex\n'))], {},
+    deps({ runClaudeImpl }, { listModels: async () => [{ id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'gpt-6-astra', label: 'Astra' }], engineOfModel: (m) => (m === 'gpt-6-astra' ? 'codex' : null) }));
+  await job.readsSettled(own(f));
+  const a = getAttachment(row.id);
+  assert.deepEqual([a.status, a.summary, a.error], ['done', 'A PDF, read on Codex.', null]);
+  assert.equal(calls.length, 1);
+  const c = calls[0];
+  assert.deepEqual([c.model, c.engine, c.sandbox], ['gpt-6-astra', 'codex', 'read-only'], 'the default Requirements model, on its own harness');
+  assert.deepEqual(c.names, [`${row.id}.pdf`], 'the folder holds only the copy');
+  assert.deepEqual(c.mcpDoc.mcpServers.worca_files.args.slice(-2), ['--root', c.cwd], 'the file tools see that folder and nothing else');
+  assert.ok(c.systemPrompt.startsWith(ATTACHMENT_SYSTEM_PROMPT) && c.systemPrompt.endsWith(`absolute paths under ${c.cwd}.`));
+  assert.equal('readGuard' in c, false, 'no Claude Code hook on codex');
+  assert.equal(existsSync(c.mcpConfigPath), false, 'the temp MCP config is gone');
+  assert.equal(existsSync(c.cwd), false, 'so is the read folder');
+  assert.deepEqual(readDirs(), []);
+});
+
 test('fail closed: more than one turn with no tool call, no decision log, or no result on the stream is a discarded read', async () => {
   const f = feature();
   const unchecked = (id) => [getAttachment(id).status, getAttachment(id).error.code, getAttachment(id).summary];
