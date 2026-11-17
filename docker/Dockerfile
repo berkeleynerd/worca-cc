@@ -10,6 +10,7 @@
 # Build args:
 #   WORCA_TARBALL        path (relative to the build context) of worca-app-<v>.tgz  [required]
 #   CLAUDE_CODE_VERSION  the @anthropic-ai/claude-code version to pin              [required]
+#   CODEX_VERSION        the @openai/codex version to pin (the default harness)      [0.169.0]
 #   VARIANT              slim | full                                               [slim]
 #   APT_REFRESH          any string; a new value rebuilds the OS layer (CI: Debian publish stamps)
 
@@ -20,6 +21,7 @@ FROM node:24-bookworm-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc
 
 ARG WORCA_TARBALL
 ARG CLAUDE_CODE_VERSION
+ARG CODEX_VERSION=0.169.0
 ARG VARIANT=slim
 # Changes in CI whenever Debian publishes, so the cached OS layer picks up its fixes.
 ARG APT_REFRESH=
@@ -74,6 +76,10 @@ RUN if [ "${VARIANT}" = "full" ]; then \
 # (DISABLE_AUTOUPDATER below); a newer CLI is a newer image tag.
 RUN test -n "${CLAUDE_CODE_VERSION}" || { echo "CLAUDE_CODE_VERSION build arg is required" >&2; exit 1; } \
  && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && npm cache clean --force
+
+# Codex, pinned: the default harness of this fork. Its sign-in comes from the environment or a mounted ~/.codex.
+RUN npm install -g "@openai/codex@${CODEX_VERSION}" \
  && npm cache clean --force
 
 # Worca, from the packed tarball, at the versions its npm-shrinkwrap.json locks. `npm install -g` of
@@ -161,6 +167,7 @@ LABEL org.opencontainers.image.title="Worca" \
       org.opencontainers.image.source="https://github.com/SinishaDjukic/worca-cc" \
       org.opencontainers.image.licenses="MIT" \
       dev.worca.claude-code.version="${CLAUDE_CODE_VERSION}" \
+      dev.worca.codex.version="${CODEX_VERSION}" \
       dev.worca.variant="${VARIANT}"
 
 # hadolint ignore=DL3066
