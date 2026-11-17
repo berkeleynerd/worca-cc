@@ -6960,7 +6960,6 @@ async function defragRequest(req, res, { memoryScope, projectKey: key }) {
     title: memoryScope === 'global' ? 'Memory defragment (global)' : `Memory defragment: ${p.name}`,
     workflowId: MEMORY_DEFRAG_WORKFLOW_ID,
     guardrailsId: 'normal',
-    // Settings › Memory names a model of one harness: the run uses that harness, so the setting is the one applied.
     ...(memoryDefragModel().model ? { engine: helperEngineOfModel(memoryDefragModel().model) || 'claude' } : {}),
     memoryScope,
     ...(req.body && req.body.mock === true ? { mock: true } : {}),
@@ -7346,9 +7345,7 @@ function primaryMemberOf(paths) {
  * refuses — mock, an auth env var, or an unknown answer (an older CLI) all pass.
  * Sends the 409 and returns true when it refused.
  */
-/** The harness a workspace scan run starts on (it names none itself: the run.engine default for a workspace). */
-function scanRunEngine(models = null) {
-  // A scan runs on the harness of its scan model: the pick is a model of one harness, and the run must use the pick.
+function scanRunEngine(models = null) {   // a scan runs on the harness of its scan model, so the run uses the pick
   if (models && models.scanModel) return helperEngineOfModel(models.scanModel) || 'claude';
   try { return resolveRunEngine({ explicit: null, workspace: true }).engine || 'claude'; } catch { return 'claude'; }
 }
@@ -7766,13 +7763,12 @@ app.post('/api/app/update', async (req, res) => {
  * a 400 that names it. A Codex run's utility jobs run on Codex's own default for now.
  * @throws {Error}
  */
+const OWN_HARNESS_KEYS = ['memoryDefrag', 'agentGenModel', 'namingModel', 'commandSummaryModel', 'workspaceScan', 'requirementsInterview'];
 function refuseNonClaudeUtilityModel(key, value) {
   const id = typeof value === 'string' ? value.trim()
     : (value && typeof value === 'object' ? String(value.model ?? value.scanModel ?? '').trim() : '');
   const harnesses = id ? enginesOfModel(id) : null;   // null: no catalog knows the id — allowed, as today
-  // These jobs run on the harness of their model (title.mjs helperEngineOfModel), so a Codex model is a valid pick.
-  const onOwnHarness = ['titleModel', 'memoryDefrag', 'agentGenModel', 'namingModel', 'commandSummaryModel', 'workspaceScan', 'requirementsInterview'].includes(key);
-  if (harnesses && onOwnHarness && harnesses.some((h) => h !== 'claude' && HELPER_ENGINES.includes(h))) return;
+  if (harnesses && OWN_HARNESS_KEYS.includes(key) && harnesses.some((h) => h !== 'claude' && HELPER_ENGINES.includes(h))) return;   // these jobs run on the harness of their model
   if (harnesses && !harnesses.includes('claude')) throw new Error(`${key}: "${id}" runs on ${harnesses.map(engineLabel).join(' or ')}. This setting picks a model Claude Code can run`);
 }
 

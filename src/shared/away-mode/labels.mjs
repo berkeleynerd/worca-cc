@@ -112,7 +112,7 @@ export const FIELD_LABELS = Object.freeze({
 });
 
 /** The "Decided by" effort choices: model-env.mjs EFFORTS (test/night-decider-model.test.mjs pins them equal). */
-export const DECIDER_EFFORTS = Object.freeze(['medium', 'high', 'xhigh', 'max', 'ultra']);
+export const DECIDER_EFFORTS = Object.freeze(['medium', 'high', 'xhigh', 'max']);
 /** The words around the "Decided by" picker and the answers list. */
 export const DECIDER_WORDS = Object.freeze({
   sameAsRun: 'Same as the run',          // deciderModel not set: the run's model

@@ -32,11 +32,18 @@ test('a Codex id in a Claude utility setting is a 400 naming it; nothing is writ
     ['titleModel', 'gpt-5.5', 'gpt-5.5'],
     ['autoWorkflowModel', 'gpt-5.5', 'gpt-5.5'],
     ['prDescriptionModel', 'gpt-5.6-sol', 'gpt-5.6-sol'],
-    ['memoryDefrag', { model: 'gpt-5.5', effort: 'low' }, 'gpt-5.5'],
-    ['agentGenModel', { model: 'gpt-5.5', effort: 'high' }, 'gpt-5.5'],
-    ['namingModel', { model: 'gpt-5.5', effort: 'high' }, 'gpt-5.5'],
-    ['workspaceScan', { scanModel: 'gpt-5.5', scanEffort: 'low', agentModel: 'sonnet', agentEffort: 'medium' }, 'gpt-5.5'],
   ];
+  // Fork: the jobs that run on the harness of their model take a Codex id (server.mjs OWN_HARNESS_KEYS).
+  for (const [key, value] of [
+    ['memoryDefrag', { model: 'gpt-5.5', effort: 'low' }],
+    ['agentGenModel', { model: 'gpt-5.5', effort: 'high' }],
+    ['namingModel', { model: 'gpt-5.5', effort: 'high' }],
+    ['workspaceScan', { scanModel: 'gpt-5.5', scanEffort: 'low', agentModel: 'sonnet', agentEffort: 'medium' }],
+  ]) {
+    const ok = await post({ [key]: value });
+    assert.equal(ok.status, 200, key);
+    assert.equal((await post({ [key]: null })).status, 200, `${key} cleared`);
+  }
   for (const [key, value, id] of cases) {
     const r = await post({ [key]: value, theme: 'dark' });
     assert.equal(r.status, 400, key);
