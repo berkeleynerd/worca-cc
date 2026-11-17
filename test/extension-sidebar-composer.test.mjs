@@ -418,7 +418,7 @@ test('#943: a chat that has run names its engine, offers only that engine\'s mod
   assert.equal(h.$('.ask-model-btn').dataset.engine, 'codex');
   assert.equal(h.$('.ask-model-btn-engine').textContent, 'Codex', 'the engine is on the button in text');
   await h.click(h.$('.ask-model-btn'));
-  assert.deepEqual(h.$$('.ask-pop-model .ask-pop-group').map((g) => g.textContent), ['Codex (beta) · this chat']);
+  assert.deepEqual(h.$$('.ask-pop-model .ask-pop-group').map((g) => g.textContent), ['Codex · this chat']);
   assert.deepEqual(h.$$('.ask-pop-model .ask-model-name').map((n) => n.textContent), ['GPT-5.5']);
   assert.match(h.$('.ask-pop-model .ask-pop-empty').textContent, /use the model picker in Chat/);
   h.sockets.at(-1).onmessage({ data: JSON.stringify({ type: 'ask-engine', threadId: TID, engine: 'claude', model: 'claude-opus-5-5', effort: 'high' }) });

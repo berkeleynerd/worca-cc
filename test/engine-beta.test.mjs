@@ -13,28 +13,32 @@ const CATALOG = [
   { id: 'gpt-5.5', label: 'GPT-5.5', engine: 'codex', efforts: ['minimal', 'low', 'medium', 'high'] },
 ];
 
-test('every engine but Claude is in beta', () => {
-  assert.deepEqual(BETA_ENGINES, ['codex', 'copilot', 'cursor', 'gemini', 'goose', 'opencode', 'qwen']);
+test('every engine but Claude and Codex is in beta', () => {
+  assert.deepEqual(BETA_ENGINES, ['copilot', 'cursor', 'gemini', 'goose', 'opencode', 'qwen']);
   assert.equal(engineChoiceLabel('opencode'), 'OpenCode (beta)');
   assert.equal(engineChoiceLabel('gemini'), 'Gemini CLI (beta)');
   assert.equal(engineChoiceLabel('qwen'), 'Qwen Code (beta)');
   for (const e of BETA_ENGINES) assert.ok(ENGINE_NAMES.includes(e), `${e} is a known engine`);
   assert.equal(engineChoiceLabel('cursor'), 'Cursor (beta)');
-  assert.equal(isBetaEngine('codex'), true);
+  assert.equal(isBetaEngine('codex'), false);
+  assert.equal(isBetaEngine('copilot'), true);
   assert.equal(isBetaEngine('claude'), false);
   assert.equal(isBetaEngine(null), false);
-  assert.equal(engineChoiceLabel('codex'), 'Codex (beta)');
+  assert.equal(engineChoiceLabel('codex'), 'Codex');
+  assert.equal(engineChoiceLabel('copilot'), 'Copilot (beta)');
   assert.equal(engineChoiceLabel('claude'), 'Claude');
 });
 
-test('Settings marks Codex as beta: the engine options and the Codex card heading', () => {
+test('Settings does not mark Codex as beta: the engine options and the Codex card heading; Copilot keeps its mark', () => {
   const dom = trackDom(new JSDOM('<div id="h"></div><div id="a"></div>'));
   const doc = dom.window.document;
   renderEngineSection(doc.getElementById('h'), { level: 'user', catalog: CATALOG, roles: [], fields: {} });
   const optionText = (root, id) => root.querySelector(`[data-setting="${id}"] select option[value="codex"]`).textContent;
-  assert.equal(optionText(doc.getElementById('h'), 'run.engine'), 'Codex (beta)');
+  const optionOf = (root, id, engine) => root.querySelector(`[data-setting="${id}"] select option[value="${engine}"]`)?.textContent;
+  assert.equal(optionText(doc.getElementById('h'), 'run.engine'), 'Codex');
+  assert.equal(optionOf(doc.getElementById('h'), 'run.engine', 'copilot'), 'Copilot (beta)');
   const badge = (engine) => doc.querySelector(`.engine-card[data-engine="${engine}"] h3 .beta-badge`);
-  assert.equal(badge('codex')?.textContent, 'Beta');
+  assert.equal(badge('codex'), null);
   assert.equal(badge('claude'), null);
   // Codex is the default engine for new chats: it is the select's empty choice, named once, so it has no option of its own.
   renderAskEngineSection(doc.getElementById('a'), { catalog: CATALOG });

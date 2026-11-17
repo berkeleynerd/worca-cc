@@ -52,7 +52,7 @@ test('Codex and Copilot keep their words', () => {
   assert.equal(codex.notReady.setupLabel, 'Codex setup');
   assert.equal(codex.notReady.flag, 'codexSetup');
   assert.equal(codex.shellTrippedMessage, 'Codex tried to run a shell command although its shell was switched off — worca stopped the turn.');
-  assert.equal(codex.suggestionModel, 'gpt-5.6-luna');
+  assert.equal(codex.suggestionModel, 'gpt-6-luna');
   assert.equal(codex.titles, true);
   const copilot = chatDescriptor('copilot');
   assert.equal(copilot.notReady.docsUrl, 'https://github.com/SinishaDjukic/worca-cc/blob/dev/docs/models.md#github-copilot-cli');

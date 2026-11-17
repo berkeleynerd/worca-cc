@@ -6,7 +6,7 @@ import { checkRows } from './helpers/rows.mjs';
 import { resolveDeciderPair } from '../src/core/night/decider-model.mjs';
 import { NIGHT_EFFORTS } from '../src/core/night/config.mjs';
 import { DECIDER_EFFORTS } from '../src/shared/away-mode/labels.mjs';
-import { EFFORTS } from '../src/core/model-env.mjs';
+import { EFFORTS, ALL_EFFORTS } from '../src/core/model-env.mjs';
 
 const MODELS = [
   { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['medium', 'high', 'xhigh', 'max'] },
@@ -14,9 +14,18 @@ const MODELS = [
   { id: 'corp-bridged', label: 'Corp', efforts: ['medium', 'high'], bridged: 'openai', needsSignIn: true },
 ];
 
-test('the effort lists the zero-import leaves keep are model-env EFFORTS', () => {
-  assert.deepEqual([...NIGHT_EFFORTS], EFFORTS);
+test('the effort lists the zero-import leaves keep: the form offers model-env EFFORTS, the stored value may also be ultra', () => {
+  assert.deepEqual([...NIGHT_EFFORTS], [...EFFORTS, 'ultra']);
   assert.deepEqual([...DECIDER_EFFORTS], EFFORTS);
+  for (const e of NIGHT_EFFORTS) assert.ok(ALL_EFFORTS.includes(e), `${e} is an effort some harness lists`);
+});
+
+test('ultra: kept for a decider model that lists it, dropped to medium (and reported) for one that does not', () => {
+  const models = [...MODELS, { id: 'gpt-6-astra', label: 'Astra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] }];
+  assert.deepEqual(resolveDeciderPair({ deciderModel: 'gpt-6-astra', deciderEffort: 'ultra' }, { models }),
+    { model: 'gpt-6-astra', effort: 'ultra', source: 'setting', stale: null, staleWhy: null, effortDropped: null });
+  assert.deepEqual(resolveDeciderPair({ deciderModel: 'claude-opus-5-5', deciderEffort: 'ultra' }, { models }),
+    { model: 'claude-opus-5-5', effort: 'medium', source: 'setting', stale: null, staleWhy: null, effortDropped: 'ultra' });
 });
 
 test('a configured model that is in the catalog and runnable is used, in the catalog casing', () => {

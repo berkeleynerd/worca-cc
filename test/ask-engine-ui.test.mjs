@@ -17,7 +17,7 @@ test('engineOfEntry / chatEngineOf: a chat with an assistant row is locked to it
 });
 
 test('pickerGroups: one group per engine present, Claude first; a lock keeps one', () => {
-  assert.deepEqual(pickerGroups(CAT.models).map((g) => [g.label, g.models.map((m) => m.id)]), [['Claude', ['claude-opus-5-5']], ['Codex (beta)', ['gpt-5.5']]]);
+  assert.deepEqual(pickerGroups(CAT.models).map((g) => [g.label, g.models.map((m) => m.id)]), [['Claude', ['claude-opus-5-5']], ['Codex', ['gpt-5.5']]]);
   assert.deepEqual(pickerGroups(CAT.models, { lock: 'codex' }).map((g) => g.engine), ['codex']);
 });
 
@@ -28,8 +28,8 @@ test('attachRefusal: a Codex chat refuses PDFs and names the chats that view the
 });
 
 test('pickerGroups: `active` marks the chat\'s own engine and hides none (#943)', () => {
-  assert.deepEqual(pickerGroups(CAT.models, { active: 'codex' }).map((g) => g.label), ['Claude', 'Codex (beta) · this chat']);
-  assert.deepEqual(pickerGroups(CAT.models, { lock: 'codex', active: 'codex' }).map((g) => g.label), ['Codex (beta) · this chat']);
+  assert.deepEqual(pickerGroups(CAT.models, { active: 'codex' }).map((g) => g.label), ['Claude', 'Codex · this chat']);
+  assert.deepEqual(pickerGroups(CAT.models, { lock: 'codex', active: 'codex' }).map((g) => g.label), ['Codex · this chat']);
 });
 
 test('chatSwitchChanges: what moving a chat from one engine to another changes (#943)', () => {

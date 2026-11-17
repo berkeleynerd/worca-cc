@@ -34,9 +34,9 @@ test('a new chat lists its engine\'s models; every other engine is one row that 
   ctx.doc.querySelector('[data-ask-model-btn]').click(); await ctx.tick();
   assert.deepEqual(groups(ctx), ['Claude']);
   assert.deepEqual(names(ctx), ['Opus 5.5']);
-  assert.deepEqual(engineRows(ctx), ['Codex (beta)']);
+  assert.deepEqual(engineRows(ctx), ['Codex']);
   await openEngine(ctx, 'codex');
-  assert.equal(ctx.doc.querySelector('.ask-pop-model [data-ask-pane-back]').textContent, '‹ Codex (beta)');
+  assert.equal(ctx.doc.querySelector('.ask-pop-model [data-ask-pane-back]').textContent, '‹ Codex');
   assert.deepEqual(names(ctx), ['GPT-5.5']);
   ctx.doc.querySelector('.ask-pop-model [data-ask-pane-back]').click(); await ctx.tick();
   assert.deepEqual(names(ctx), ['Opus 5.5'], 'back returns to the main list');
@@ -271,7 +271,7 @@ test('each engine\'s list holds the newest of each family; its More models the r
   ctx.doc.querySelector('[data-ask-model-btn]').click(); await ctx.tick();
   assert.deepEqual(groups(ctx), ['Claude']);
   assert.deepEqual(names(ctx), ['Opus 5.5']);
-  assert.deepEqual(engineRows(ctx), ['Codex (beta)', 'Copilot (beta)']);
+  assert.deepEqual(engineRows(ctx), ['Codex', 'Copilot (beta)']);
   ctx.doc.querySelector('[data-ask-more-models]').click(); await ctx.tick();
   assert.deepEqual(names(ctx), ['Opus 5'], 'only the shown engine\'s more models');
   ctx.doc.querySelector('.ask-pop-model [data-ask-pane-back]').click(); await ctx.tick();
@@ -325,7 +325,7 @@ test('inside a Codex chat the picker lists every engine and marks the chat\'s ow
   const ctx = await openCodexChat({ fetchHandler: handler(CODEX_CHAT) });
   assert.equal(modelBtn(ctx).dataset.engine, 'codex');
   modelBtn(ctx).click(); await ctx.tick();
-  assert.deepEqual(groups(ctx), ['Codex (beta) · this chat']);
+  assert.deepEqual(groups(ctx), ['Codex · this chat']);
   assert.deepEqual(names(ctx), ['GPT-5.5']);
   assert.deepEqual(engineRows(ctx), ['Claude']);
   await openEngine(ctx, 'claude');
