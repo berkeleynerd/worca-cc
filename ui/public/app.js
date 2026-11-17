@@ -25200,13 +25200,17 @@ function wsRollupPr(p) {
 // run's Create-PR control) and the pendingShipIt consumer. A workspace run is eligible when at
 // least one MEMBER can still get a PR (histWsShippable) — POST /api/pr's workspace arm
 // takes that member's `memberKey`. A single-project run keeps its three clauses.
+/** A finished single-project run whose recorded diff is empty: no file changed, so there is nothing to ship or try. */
+function histNoChanges(p) {
+  return !!p && p.target !== 'workspace' && !!p.diffFrozen && p.files === 0 && !p.added && !p.removed;
+}
 function histPrEligible(p) {
   if (!(prHostAvailable() && p)) return false;
   // Merged back (or still settling): the work is ON the source (head == base) and ships by Push (paintHdPush).
   // Not merged back: the work stays on its own branch, so a PR is the way to land it.
   if (p.sameAsSource && p.mergeBack?.merged !== false) return false;
   // A finished run that changed no file (a review, a report) has nothing to open a pull request for.
-  if (p.target !== 'workspace' && p.diffFrozen && p.files === 0 && !p.added && !p.removed) return false;
+  if (histNoChanges(p)) return false;
   if (p.target === 'workspace') return histWsShippable(p).length > 0;
   return !!(p.survived && p.branch && p.sourceBranch);
 }
@@ -26666,7 +26670,7 @@ async function archiveRunFlow({ btn, rec: r, run, screen, onGone }) {
 const BASE_FINISHED = new Set(['done', 'stopped', 'error']);
 // The Actions row offers "Try it on this machine" only when Check out would be accepted: finished, a branch, no kept work.
 function hdCanTry(record, st, retained, provisional) {
-  return !!(record && record.branch) && BASE_FINISHED.has(st && st.status) && !retained && !provisional;
+  return !!(record && record.branch) && BASE_FINISHED.has(st && st.status) && !retained && !provisional && !histNoChanges(record);
 }
 
 /** [{ key, name, rec, published, resolving, prOpen }] from the detail state; a row-level summary newer than the
@@ -37231,7 +37235,7 @@ function paintRdHead(screen, r, m = rdModel(r)) {
     liveBranch: (r.branch && typeof r.branch === 'object' && r.branch.feature) || r.branchFeature || '',
     pipelineId: r.pipelineId || '',
     folder: bar ? { state: bar.state, total: changesCounts(changes).total, dir: r.projectDir || '' } : null,
-    canTry: !!(rec && rec.branch) && terminal && !kept && !!r.pipelineId && !hdCheckoutFor(rec),
+    canTry: !!(rec && rec.branch) && terminal && !kept && !!r.pipelineId && !hdCheckoutFor(rec) && !histNoChanges(rec),
   });
   paintRunHead(screen, f, headHandlers(screen, () => rdNoticeCarrier(r), { kept, ctaCls: 'rd-create-pr', folderTotal: f.folder ? f.folder.total : 0, onCreate: () => {
     const key = historyKeyForRun(r);
@@ -37273,7 +37277,7 @@ function paintRdResult(screen, r, { glance = 'run', trailCount = 0 } = {}) {
   const rec = r.pipelineId ? rdHistoryRecord(r) : null;
   const co = hdCheckoutFor(rec);
   const kept = !(r._retainedDiscarded || r._retainedApplied) && ((rec && rec.retainedWork) || rdRetainedFor(r));
-  const canTry = !!(rec && rec.branch) && !kept;
+  const canTry = !!(rec && rec.branch) && !kept && !histNoChanges(rec);
   host.append(...rdActivityGroups(screen, { overview: activityOverviewValue(results), workflow: steps, diff: rdDiffRowValue(r), changes: rdChangesRowValue(r),
     actions: checkoutRowValue(co, { when: shortWhen, canTry }) }));
   paintActionsRowValue(screen, co, canTry, () => rdNoticeCarrier(r), keptRow);
@@ -37498,7 +37502,7 @@ function paintRdWorktreeNotice(screen, r) {
     onApply: (btn) => applyRetainedFlow(btn, rdNoticeCarrier(r), model, () => { r._retainedApplied = true; repaint(); }),
     onDiscard: (btn) => discardRetainedWorktree(btn, r.projectDir || null, rdNoticeCarrier(r), () => { r._retainedDiscarded = true; repaint(); }) } : null;
   paintRdHead(screen, r);
-  const canTry = !!(rec && rec.branch) && RD_TERMINAL.includes(r.status) && !retained && !!r.pipelineId;
+  const canTry = !!(rec && rec.branch) && RD_TERMINAL.includes(r.status) && !retained && !!r.pipelineId && !histNoChanges(rec);
   paintActionsRowValue(screen, checkout, canTry, () => rdNoticeCarrier(r));
 }
 

@@ -34,4 +34,4 @@ A script node may carry the gate too. With a verdict and an output marked `when:
 stop for a person only when it fails: wire the clean and the blocking output into an `or` node, put the
 gate on the blocking one, and the run goes on untouched when the script is clean.
 
-A finished run that changed no file no longer offers Create PR.
+A finished run that changed no file offers neither Create PR nor Try it: there is nothing to ship or check out.
