@@ -12,7 +12,7 @@ import { renderInheritField, readInheritField } from './inherit-field.mjs';
 import { fetchJson as defaultFetchJson, renderResults, PORT_EMPTY_NOTE, PORT_SWITCH_NOTE, AUTH_OPTIONS } from './settings-network-proxy.mjs';
 import { LEVEL_INFO, UI_LEVELS } from './ui-level.mjs';
 import { ROLE_LABELS, MODEL_ROLES, ROLE_HARNESSES } from '../../src/shared/model-roles.mjs';
-import { CHAT_ENGINE_NAMES, engineLabel } from '../../src/shared/engine-switch.mjs';
+import { CHAT_ENGINE_NAMES, engineLabel, DEFAULT_ENGINE } from '../../src/shared/engine-switch.mjs';
 import { UPSTREAM_TIMEOUTS } from '../../src/shared/proxy-timeouts.mjs';
 
 export const SETUP_STEPS = Object.freeze([
@@ -154,7 +154,7 @@ function savedNetworkPatch(saved) {
 }
 
 /** The engine Chat's new chats start on, as saved (askEngine, D17; unset or unknown = Claude): the Chat field's slot. */
-export function askEngineOf(settings = {}) { return CHAT_ENGINE_NAMES.includes(settings?.askEngine) ? settings.askEngine : 'claude'; }
+export function askEngineOf(settings = {}) { return CHAT_ENGINE_NAMES.includes(settings?.askEngine) ? settings.askEngine : DEFAULT_ENGINE; }
 /** What an empty Chat field means: the Everyday coding role where roles exist (withRole), else the engine's own default. */
 const chatFallback = (engine) => (ROLE_HARNESSES.includes(engine) ? 'same as Everyday coding' : `${engineLabel(engine)}'s default model`);
 
@@ -213,7 +213,7 @@ export function buildApplyBody(saved, answers) {
 export function diffRows(saved, answers) {
   const body = buildApplyBody(saved, answers); const n = answers.network; const a = answers.access; const w = answers.work;
   const sources = [a.claude && 'Claude Code', a.copilot && 'GitHub Copilot', a.openai && 'OpenAI-compatible', a.anthropic && 'Anthropic-compatible'].filter(Boolean);
-  const roles = answers.models.modelRoles[w.runEngine || 'claude'] || {};
+  const roles = answers.models.modelRoles[w.runEngine || DEFAULT_ENGINE] || {};
   const chatLine = { role: 'Chat', model: answers.models.askModel?.model || null, fallback: chatFallback(askEngineOf(saved.settings)) };
   const money = (v) => (v == null ? 'none' : `$${v}`);
   // Whether the team filled a key of this group (the Team chip); network and access never: D12.
@@ -749,7 +749,7 @@ export function openSetupAssistant({ doc = globalThis.document, fetchJson = defa
     chatHost.addEventListener('change', readChat);
     chatHost.addEventListener('click', (e) => { if (e.target.closest?.('.inherit-clear')) readChat(); });
     body.append(host);
-    renderRolesSection(host, { roles: m.modelRoles, catalog, engine: S.answers.work.runEngine || 'claude', onChange: (next) => {
+    renderRolesSection(host, { roles: m.modelRoles, catalog, engine: S.answers.work.runEngine || DEFAULT_ENGINE, onChange: (next) => {
       // A click that changes nothing (the harness switch) keeps the answers as they were.
       if (!Object.keys(rolePatch(m.modelRoles, next)).length) return;
       m.modelRoles = next;

@@ -67,9 +67,10 @@ const row = (id, label, state, line, facts) => ({ id, label, state, line, ...(fa
 /** One entry per D18 check, in display order. `run(p)` returns the probe's raw answer; `read(raw)` turns it into a row. */
 export const DETECT_CHECKS = Object.freeze([
   { id: 'claude', label: 'Claude Code', run: (p) => p.claude(), read: (c) =>
-    !c.ready ? ['no', c.hint ? userLine(c.hint, 'Claude Code') : 'Claude Code was not found on this machine.']
+    // Claude Code is one harness among several here (Codex is the default): missing or signed out is a note, not a failure.
+    !c.ready ? ['warn', `${c.hint ? userLine(c.hint, 'Claude Code') : 'Claude Code was not found on this machine.'} Runs and chats on Codex do not need it.`]
       : c.auth === 'signed-in' ? ['ok', 'Claude Code is installed and signed in.']
-        : c.auth === 'signed-out' ? ['no', CLAUDE_SIGNED_OUT_HINT]
+        : c.auth === 'signed-out' ? ['warn', `${CLAUDE_SIGNED_OUT_HINT} Runs and chats on Codex do not need it.`]
           : ['warn', "Claude Code is installed. Worca couldn't tell whether it is signed in."] },
   { id: 'git', label: 'Git', run: (p) => p.git(), read: (g) =>
     g.available ? ['ok', g.version ? `Git ${g.version} is installed.` : 'Git is installed.']
