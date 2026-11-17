@@ -556,7 +556,8 @@ export function assertWorkspaceScanInput(input, models = null) {
   const agentModel = s(input.agentModel);
   const agentEffort = s(input.agentEffort);
   if (!scanModel || scanModel.length > DEFRAG_MODEL_MAX_LEN) throw new Error('workspaceScan.scanModel must be a catalog model id');
-  if (scanEffort && !EFFORTS.includes(scanEffort)) throw new Error(`workspaceScan.scanEffort must be one of ${EFFORTS.join(' | ')}`);
+  // The scan model may be another harness's (a Codex model lists low and ultra): its own list is checked below.
+  if (scanEffort && !ALL_EFFORTS.includes(scanEffort)) throw new Error(`workspaceScan.scanEffort must be one of ${ALL_EFFORTS.join(' | ')}`);
   if (!SUBAGENT_MODELS.includes(agentModel)) throw new Error(`workspaceScan.agentModel must be one of ${SUBAGENT_MODELS.join(' | ')}`);
   if (!EFFORTS.includes(agentEffort)) throw new Error(`workspaceScan.agentEffort must be one of ${EFFORTS.join(' | ')}`);
   if (Array.isArray(models)) {
