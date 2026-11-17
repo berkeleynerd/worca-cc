@@ -150,7 +150,28 @@ test('the Memory view\'s Defragment button starts a run on the Settings › Memo
     await untilStamped(projectScope(project.key), entry.pipelineId);
     const node = entry.orch.getState().stepper.graph.nodes.find((n) => n.id === 'n_defrag');
     assert.deepEqual([node.model, node.effort], ['claude-haiku-4-5', 'high'], 'the wrapper sends no pair; the run resolved the setting');
+    assert.equal(entry.orch.claude.engine, 'claude', 'a Claude model: the run is started on Claude, whatever the default harness');
   } finally { await post('/api/settings', { memoryDefrag: null }); }
+});
+
+test('the Defragment button starts the run on the harness of the Settings › Memory model: a Codex model runs on codex, at its own effort', { timeout: 120000 }, async () => {
+  // A Codex pair as a settings file holds it (low is Codex's effort: the stored pair keeps it).
+  const before = await readSettingsJson().catch(() => ({}));
+  await writeFile(settingsFile(), JSON.stringify({ ...before, memory: { defrag: { model: 'gpt-6-luna', effort: 'low' } } }));
+  try {
+    await writeMemory(memoryRoot(), projectScope(project.key), 'third', 'Third rule.\n', { source: 'user' });
+    const r = await post(`/api/memory/projects/${project.key}/defragment`);
+    const raw = await r.text();
+    assert.equal(r.status, 200, raw);
+    const { runId } = JSON.parse(raw);
+    const entry = runs.get(runId);
+    assert.equal(entry.orch.claude.engine, 'codex');
+    const done = await untilSettled(runId);
+    assert.equal(done.status, 'done', JSON.stringify({ status: done.status, detail: done.pauseDetail, error: done.error }));
+    await untilStamped(projectScope(project.key), entry.pipelineId);
+    const node = entry.orch.getState().stepper.graph.nodes.find((n) => n.id === 'n_defrag');
+    assert.deepEqual([node.model, node.effort], ['gpt-6-luna', 'low'], 'the setting is the pair the run applies');
+  } finally { await writeFile(settingsFile(), JSON.stringify(before)); }
 });
 
 test('POST /api/run: a pair named at the start of a defragment run beats the setting; a bad pair is a 400; an ordinary run still ignores a body model', { timeout: 180000 }, async () => {

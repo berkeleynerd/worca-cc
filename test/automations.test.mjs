@@ -250,6 +250,31 @@ function harness({ clock = { t: T0 + 120_000 } } = {}) {
   return { engine, gh, runs, calls, clock, finish, deps };
 }
 
+test('engine: a run under Normal or Permissive names no engine (the default harness); any other guardrail set names Claude', async () => {
+  const started = async (guardrailsId) => {
+    getDb().exec('DELETE FROM automation_rules; DELETE FROM automation_events; DELETE FROM automation_cursors; DELETE FROM automation_deliveries');
+    const h = harness();
+    const r = rule(guardrailsId === undefined ? {} : { guardrailsId });
+    await h.engine.poll({ repo: REPO, projectKey: r.projectKey, projectDir: '/repo' });
+    h.clock.t += 60_000;
+    h.gh.items.push(issue(2, { created_at: iso(h.clock.t), updated_at: iso(h.clock.t) }));
+    await h.engine.poll({ repo: REPO, projectKey: r.projectKey, projectDir: '/repo' });
+    assert.equal(h.calls.start.length, 1, String(guardrailsId));
+    return h.calls.start[0].body;
+  };
+  for (const id of ['normal', 'permissive']) {
+    const body = await started(id);
+    assert.equal(body.guardrailsId, id);
+    assert.equal('engine' in body, false, `${id}: the run's own engine default applies`);
+  }
+  // Strict (the rule default), and a saved or team set whose rules worca cannot know here.
+  for (const id of [undefined, 'secure', 'gs_saved_1']) {
+    const body = await started(id);
+    assert.equal(body.guardrailsId, id ?? DEFAULT_GUARDRAILS);
+    assert.equal(body.engine, 'claude', String(id));
+  }
+});
+
 test('engine: the first poll only stores a cursor (no backlog); a new issue starts ONE run, on Strict, unattended', async () => {
   const h = harness();
   const r = rule();
@@ -263,6 +288,7 @@ test('engine: the first poll only stores a cursor (no backlog); a new issue star
   const { body, opts } = h.calls.start[0];
   assert.equal(body.workflowId, 'wf_default');
   assert.equal(body.guardrailsId, 'secure');
+  assert.equal(body.engine, 'claude', 'Strict has path rules only Claude Code enforces: the run names Claude');
   assert.equal(body.humanInLoop, false);
   assert.equal(body.source.type, 'github');
   assert.equal(body.source.url, `https://github.com/${REPO}/issues/2`);

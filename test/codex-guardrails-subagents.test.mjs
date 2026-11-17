@@ -224,6 +224,11 @@ test('codexInvestigatorRole: worca\'s prompt plus the memory block; a Codex mode
   const c = codexInvestigatorRole({ agents: { x: { prompt: 'P', model: 'sonnet', effort: 'medium' } } });
   assert.equal(c.toml.includes('model = '), false, 'a Claude alias means nothing to codex: the role inherits the node\'s model');
   assert.match(codexInvestigatorRole({}).toml, /read-only investigator/);
+  // A built-in Codex model worca has no list price for is still a model codex runs: the role keeps it.
+  const unpriced = codexInvestigatorRole({ agents: { x: { prompt: 'P', model: 'gpt-6.1-terra', effort: 'ultra' } } });
+  assert.equal(unpriced.toml, 'developer_instructions = "P"\nmodel = "gpt-6.1-terra"\nmodel_reasoning_effort = "ultra"\n');
+  assert.equal(codexInvestigatorRole({ agents: { x: { prompt: 'P', model: 'gpt-9-unknown' } } }).toml.includes('model = '), false, 'neither priced nor built in: dropped');
+  assert.equal(codexInvestigatorRole({ agents: { x: { prompt: 'P', model: 'gpt-6.1-terra' } }, inheritModel: true }).toml.includes('model = '), false, 'on a custom endpoint the role inherits');
 });
 
 test('runCodexProcess: a fan-out spawn (the sub-agent tool granted) defines the investigator role for the call, then removes its file', POSIX, async () => {

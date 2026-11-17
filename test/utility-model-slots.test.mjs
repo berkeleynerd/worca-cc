@@ -128,8 +128,17 @@ test('memory defragment and workspace scan follow their own run\'s engine', asyn
   const scan = createOrchestrator({ projectDir, claude: { mock: true, engine: 'codex' } });
   scan._isWorkspaceScan = () => true;
   scan.opts.scanModels = { scanModel: 'claude-sonnet-5', scanEffort: 'medium', agentModel: 'sonnet', agentEffort: 'medium' };
-  assert.deepEqual(scan._scanModelPins(), { agentPair: { model: 'gpt-5.6-luna', effort: null }, subagentPin: null });
+  assert.deepEqual(scan._scanModelPins(), { agentPair: { model: 'gpt-5.6-luna', effort: null }, subagentPin: null }, 'a Claude pick on a Codex run: the Codex slot');
+  // The scan's own pick, when it is a model of the run's harness (the server starts a scan on its model's harness), is the pin.
+  scan.opts.scanModels = { scanModel: 'gpt-6-astra', scanEffort: 'ultra', agentModel: 'sonnet', agentEffort: 'medium', source: 'workspace' };
+  assert.deepEqual(scan._scanModelPins(), { agentPair: { model: 'gpt-6-astra', effort: 'ultra' }, subagentPin: null });
+  scan.opts.scanModels = { scanModel: 'gpt-6-astra', scanEffort: null, agentModel: 'sonnet', agentEffort: 'medium' };
+  assert.deepEqual(scan._scanModelPins(), { agentPair: { model: 'gpt-6-astra', effort: null }, subagentPin: null });
   assert.deepEqual(utilityModelFor('codex', 'workspaceScan', scopeForRunKey('workspaces/wks-x-deadbeef')), { model: 'gpt-5.6-luna', effort: null, source: 'user' });
+  // Settings › Memory naming a Codex model (the server starts that run on codex): it is the pair, before the Codex slot.
+  writeUser({ utilityModels: { codex: { memoryDefrag: { model: 'gpt-5.5', effort: 'medium' } } }, memory: { defrag: { model: 'gpt-6-luna', effort: 'low' } } });
+  assert.deepEqual((await codexDefrag._defragAgentPair()).pair, { model: 'gpt-6-luna', effort: 'low' });
+  assert.deepEqual((await claudeDefrag._defragAgentPair()).pair, null, 'a Claude run never takes a Codex model from the setting');
   rmSync(projectDir, { recursive: true, force: true });
 });
 
