@@ -83,6 +83,17 @@ import { NIGHT_ACTOR } from './night/config.mjs';
 const MAX_QUESTION_ROUNDS = 3;
 
 /** A gate answer: exactly `{decision: 'another' | 'continue'}`, else null (the question stays open). */
+/** The plain approval gate: the ask kind, its two choices, and the only answers it takes ({decision} from the CLI
+ *  command and the API, or the question card's one answer naming a choice). Anything else leaves the ask open. */
+export const APPROVAL_ASK_KIND = 'approval';
+export const APPROVAL_CHOICES = Object.freeze({ approve: 'Approve', stop: 'Stop the run' });
+export const approvalAnswer = (raw) => {
+  if (raw && (raw.decision === 'approve' || raw.decision === 'stop')) return { decision: raw.decision };
+  const choice = raw && Array.isArray(raw.answers) && raw.answers.length === 1 ? String(raw.answers[0]?.choice ?? '').trim() : '';
+  if (choice === APPROVAL_CHOICES.approve) return { decision: 'approve' };
+  if (choice === APPROVAL_CHOICES.stop) return { decision: 'stop' };
+  return null;
+};
 export const gateAnswer = (raw) => (raw && (raw.decision === 'another' || raw.decision === 'continue') ? { decision: raw.decision } : null);
 
 function abortError(msg = 'aborted') {
@@ -1272,6 +1283,7 @@ export class GraphOrchestrator extends RunHarness {
    */
   _schedulerAsk(q) {
     if (q.kind === PLAN_ASK_KIND) return this._planAsk(q);
+    if (q.kind === APPROVAL_ASK_KIND) return this._approvalAsk(q);
     // A gate takes exactly "another" or "continue" (2.1): anything else leaves the question open
     // (answer() refuses it), so a typo or a wrapper object can never continue past open issues.
     const ask = q.kind === 'gate' ? { ...q, validate: gateAnswer } : q;
@@ -1284,6 +1296,39 @@ export class GraphOrchestrator extends RunHarness {
         if (isPause(err) || this.pauseRequested) this._scheduler?.pause();
         else this._scheduler?.abort();
         return new Promise(() => {});   // never settles: the hold survives (see above)
+      },
+    );
+  }
+
+  /**
+   * The plain approval gate (`config.approve: { kind: 'approval', port }`): the node's output is held until a person
+   * answers. It is drawn as one question with two choices, so every surface that shows a step question shows it.
+   * Approve releases the held file to the next node; Stop ends the run. Nothing else is an answer: --yes and Away
+   * mode never decide it (run-harness.mjs _ask), and a pause leaves the hold in the resume point, like a gate.
+   */
+  _approvalAsk(q) {
+    const nc = (this.resolved?.nodeCtx || {})[q.nodeId];
+    const label = nc?.meta?.displayName || nc?.key || q.nodeId;
+    const file = q.approval?.file || null;
+    const questions = [{ id: 'approval', allowFreeText: false,
+      question: `${label} is waiting for your approval before the run goes on.${file ? ` Read ${file} first.` : ''}`,
+      options: [APPROVAL_CHOICES.approve, APPROVAL_CHOICES.stop] }];
+    return this._enqueueAsk(() => this._ask({ id: q.id, kind: APPROVAL_ASK_KIND, nodeId: q.nodeId, executionId: q.executionId,
+      questions, approval: q.approval, agent: label, validate: approvalAnswer })).then(
+      async (payload) => {
+        const decision = approvalAnswer(payload)?.decision ?? null;
+        const by = this.answeredBy(q.id);
+        await appendAudit(this.pipeline.dir, `Approval of ${label}${file ? ` (${file})` : ''}: **${decision || 'no answer'}**${byActor(by)}.`, { actor: by }).catch(() => {});
+        if (decision === 'approve') return { decision: 'approve' };
+        this._log('orchestrator', 'info', `approval ${q.id}: stop`);
+        this.stop(by);
+        this._scheduler?.abort();
+        return new Promise(() => {});
+      },
+      (err) => {
+        if (isPause(err) || this.pauseRequested) this._scheduler?.pause();
+        else this._scheduler?.abort();
+        return new Promise(() => {});   // never settles: the hold survives, as for a gate
       },
     );
   }

@@ -6481,7 +6481,7 @@ export class RunHarness extends EventEmitter {
       // A night-eligible --yes run hands the ask to night mode: it is answered through the
       // same pendingQuestion + answer() path below (delay 0), so it is attributed and audited.
       // A plan approval needs a person (spec D2): --yes never answers it and Away mode never decides it.
-      if (this.auto && kind !== PLAN_ASK_KIND && !this._nightOwnsAuto({ kind, origin })) {
+      if (this.auto && kind !== PLAN_ASK_KIND && kind !== 'approval' && !this._nightOwnsAuto({ kind, origin })) {
         if (kind === 'recovery') {
           // Auto mode handles recovery in _recover before ever calling _ask;
           // this is a defensive fallback so an auto run can never hang. Giving up
@@ -6514,7 +6514,7 @@ export class RunHarness extends EventEmitter {
         // A throw inside a Promise executor REJECTS the ask (and fails the node): night mode
         // must never break a question the user could still answer.
         const nq = { id, kind, questions, issues, recovery, wireId, executionId, deliveryNo, holdNo, workflow, plan, form, version, answerSchema, autoValues, nodeId, agent, origin };
-        if (kind !== PLAN_ASK_KIND) {
+        if (kind !== PLAN_ASK_KIND && kind !== 'approval') {
           try { this._nightArm(nq); } catch (err) { this._nightFailed(nq, `Away mode could not get ready for ${kind} ${id}: ${err?.message || err}`); }
         }
       });
@@ -9035,6 +9035,17 @@ export class RunHarness extends EventEmitter {
     if (cmd.action === 'pause') {
       this._log('orchestrator', 'info', `control: pause requested by ${by} (via the run-control mailbox)`);
       this.pause(by);
+      return;
+    }
+    if (cmd.action === 'approve') {
+      // `worca approve <id>`: answers the open approval gate, and only that (never a question or a loop gate).
+      const pq = this.pendingQuestion;
+      if (pq && pq.kind === 'approval') {
+        this._log('orchestrator', 'info', `control: approval ${pq.id} approved by ${by} (via the run-control mailbox)`);
+        this.answer(pq.id, { decision: 'approve' }, by);
+      } else {
+        this._log('orchestrator', 'warn', 'control: approve received, but no approval is waiting — ignored');
+      }
       return;
     }
     this._log('orchestrator', 'warn', `control: unknown command action "${cmd.action}" — consumed, ignored`);

@@ -356,3 +356,47 @@ test('12 role reviews: a revise answer goes to the Planner through the role node
   assert.equal(expands[3].bindings.revise.path, '/p/rev3.md', 'the budget came back: the pass-2 rewrite is delivered');
   assert.deepEqual(atRound2, { deliveries: 1 });
 });
+
+// ── The plain approval gate (`approve.kind: 'approval'`, fork): armed in every run, approve or end, never revisable ──
+const GATE = { approve: { kind: 'approval', port: 'plan' } };
+
+test('gate 1: armed without approvalStops; the ask is kind approval with the held file; nothing downstream starts', { timeout: 5000 }, async () => {
+  const d = deferredAsk();
+  const h = harness({ template: approveTpl('reviewer', [], GATE), script: rScript, onAsk: d.onAsk, approvalStops: false });
+  const run = h.scheduler.run();
+  await until(() => d.queue.length === 1);
+  await tick();
+  const q = d.queue[0].q;
+  assert.equal(q.kind, 'approval');
+  assert.equal(q.id, 'approval-n_r-1');
+  assert.deepEqual(q.approval, { port: 'plan', file: '/p/r.md', round: 1 });
+  assert.equal(q.plan, undefined, 'not a plan ask: the shaped-run machinery never sees it');
+  assert.equal(h.callsFor('n_i').length, 0);
+  assert.equal(h.last().approvals.length, 1);
+  h.scheduler.abort();
+  await run;
+});
+
+test('gate 2: approve releases the held file to the next node', { timeout: 5000 }, async () => {
+  const d = deferredAsk();
+  const h = harness({ template: approveTpl('reviewer', [], GATE), script: rScript, onAsk: d.onAsk, approvalStops: false });
+  const run = h.scheduler.run();
+  await until(() => d.queue.length === 1);
+  d.queue[0].resolve({ decision: 'approve' });
+  assert.equal(await run, 'done');
+  assert.equal(h.callsFor('n_i')[0].bindings.plan.path, '/p/r.md');
+});
+
+test('gate 3: any other answer ends the run; a revise is not honoured and the next node never runs', { timeout: 5000 }, async () => {
+  for (const answer of [{ decision: 'stop' }, { decision: 'revise', path: '/p/feedback.md' }, null]) {
+    const d = deferredAsk();
+    const h = harness({ template: approveTpl('polisher', [W('w5', 'n_r.revise', 'n_p.revise', { maxCycles: 2 })], GATE),
+      script: { n_p: () => PLAN, n_r: () => ({ verdict: CLEAN, outputs: { plan: { path: '/p/r.md' } } }) }, onAsk: d.onAsk, approvalStops: false });
+    const run = h.scheduler.run();
+    await until(() => d.queue.length === 1);
+    d.queue[0].resolve(answer);
+    assert.notEqual(await run, 'done');
+    assert.equal(h.callsFor('n_i').length, 0);
+    assert.equal(h.callsFor('n_p').length, 1, 'the producer is not re-run');
+  }
+});

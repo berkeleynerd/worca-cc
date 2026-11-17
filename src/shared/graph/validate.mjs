@@ -607,8 +607,10 @@ export const RULES = [
       if (n.kind !== 'agent' || !isObject(n.config)) continue;
       const { approve, maxQuestions, promptHints } = n.config;
       if (approve !== undefined) {
-        if (!isObject(approve) || approve.kind !== 'plan' || typeof approve.port !== 'string' || !approve.port) {
-          add(`node '${n.id}' config.approve must be { kind: 'plan', port: '<output port>' }`, { nodeId: n.id });
+        // 'plan' is the shaped run's plan stop; 'approval' is the plain gate any workflow may place (a person
+        // approves the held file or stops the run; armed in every run, never answered by --yes or Away mode).
+        if (!isObject(approve) || !['plan', 'approval'].includes(approve.kind) || typeof approve.port !== 'string' || !approve.port) {
+          add(`node '${n.id}' config.approve must be { kind: 'plan' | 'approval', port: '<output port>' }`, { nodeId: n.id });
         } else if (metaOf(n.id) && !outputsOf(n.id).some((p) => p && p.id === approve.port && p.type === 'md')) {
           add(`node '${n.id}' config.approve.port '${approve.port}' is not an md output of this agent`, { nodeId: n.id });
         }

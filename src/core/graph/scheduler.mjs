@@ -721,9 +721,10 @@ export function createScheduler(opts) {
    * (latched + evented) and accounting/gates are skipped.
    */
   const approveOf = (node) => {
-    if (!approvalStops) return null;
     const a = node?.config?.approve;
-    return a && a.kind === 'plan' && typeof a.port === 'string' ? a : null;
+    if (!a || typeof a.port !== 'string') return null;
+    if (a.kind === 'approval') return a;           // the plain gate: armed in every run
+    return approvalStops && a.kind === 'plan' ? a : null;
   };
 
   function route(node, port, token, verdict, executionId, { approved = false } = {}) {
@@ -927,9 +928,10 @@ export function createScheduler(opts) {
     }
     const round = (approvalRounds.get(node.id) || 0) + 1;
     approvalRounds.set(node.id, round);
+    const gate = approveOf(node)?.kind === 'approval';
     const entry = {
-      nodeId: node.id, executionId, port: port.id, token, askId: `plan-${node.id}-${round}`, round,
-      reviseTo: reviseTargetOf(node),
+      nodeId: node.id, executionId, port: port.id, token, askId: `${gate ? 'approval' : 'plan'}-${node.id}-${round}`, round,
+      reviseTo: gate ? null : reviseTargetOf(node), ...(gate ? { gate: true } : {}),
     };
     approvals.set(node.id, entry);
     // No snap(): completeExecution and resolveGate snapshot synchronously right after route() returns.
@@ -938,7 +940,10 @@ export function createScheduler(opts) {
 
   function askApproval(entry) {
     approvalAsked.add(entry.nodeId);
-    Promise.resolve(onAsk({
+    Promise.resolve(onAsk(entry.gate || /^approval-/.test(entry.askId)
+      ? { id: entry.askId, kind: 'approval', nodeId: entry.nodeId, executionId: entry.executionId,
+        approval: { port: entry.port, file: entry.token.path ?? null, round: entry.round } }
+      : {
       id: entry.askId,
       kind: 'plan',
       nodeId: entry.nodeId,
