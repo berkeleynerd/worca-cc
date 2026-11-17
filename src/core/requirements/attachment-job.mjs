@@ -185,6 +185,8 @@ async function promptContext(owner, d) {
  *  (`guardDecisionsCover` over the normalized events callModel captured). Fail closed: no decision log at all, or a
  *  reply that took more than one turn while the stream shows no tool call, cannot be checked, so it does not count. */
 function guardCovered(r) {
+  // Another harness (Codex): no shell, and its only file tools are rooted at the private folder holding the copy.
+  if (typeof r.confinedRead === 'string' && r.confinedRead) return true;
   if (!Array.isArray(r.readGuardDecisions)) return false;
   const events = Array.isArray(r.events) ? r.events : [];
   const results = events.filter((x) => x && x.type === 'result');

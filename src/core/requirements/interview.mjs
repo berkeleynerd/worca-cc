@@ -3,8 +3,8 @@
 // through the classifier's repo look (D7), then rounds that are single tool-less model calls. One job
 // per feature at a time; a job never throws out — a failure becomes an `error` turn and the feature goes
 // back to the product owner. Spend is checked before every call and booked after it (D9).
-import { mkdirSync } from 'node:fs';
-import { join, isAbsolute } from 'node:path';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join, isAbsolute, dirname } from 'node:path';
 import { runClaude, mockEnabled } from '../claude-runner.mjs';
 import { normalizingOnEvent } from '../engines/claude-events.mjs';
 import { resolveModelEnv, resolveModelCost, listModels } from '../config.mjs';
@@ -17,6 +17,10 @@ import { REPO_LOOK_TOOLS, REPO_LOOK_MAX_TURNS, REPO_LOOK_TIMEOUT_MS } from '../a
 import { worcaHome, listProjects } from '../projects.mjs';
 import { utilityModelFor } from '../settings-cascade.mjs';
 import { withRole } from '../model-roles.mjs';
+import { DEFAULT_ENGINE } from '../../shared/engine-switch.mjs';
+import { HELPER_ENGINES } from '../model-env.mjs';
+import { helperEngineOfModel } from '../title.mjs';
+import { writeFilesMcpConfig } from '../engines/codex-files-mcp.mjs';
 import { workspaceTarget } from '../ask/workflow-deps.mjs';
 import { RequirementsError, MAX_ROUNDS, LIMITS, clip } from './spec.mjs';
 import { unaskedRejections, unaskedFiles } from './ready.mjs';
@@ -37,7 +41,12 @@ const DEFAULTS = Object.freeze({
   openLook: openRepoLook, openWorkspaceLook: openWorkspaceRepoLook, budget: () => budgetStatus(), onChange: () => {},
   userSignIn: () => userSignInLogged(),
   // Model roles (D3): an unset interview slot takes the everyday role.
-  interviewSlot: () => withRole(utilityModelFor('claude', 'requirementsInterview'), 'claude', 'requirementsInterview'),
+  // The Requirements model: the default harness's own slot or role first (Codex in this fork), then Claude's.
+  interviewSlot: () => {
+    const onDefault = DEFAULT_ENGINE !== 'claude' && HELPER_ENGINES.includes(DEFAULT_ENGINE)
+      ? withRole(utilityModelFor(DEFAULT_ENGINE, 'requirementsInterview'), DEFAULT_ENGINE, 'requirementsInterview') : null;
+    return onDefault && onDefault.model ? onDefault : withRole(utilityModelFor('claude', 'requirementsInterview'), 'claude', 'requirementsInterview');
+  },
 });
 
 // Keys of the user settings' `env` block that sign Claude Code in or route its traffic (A1.1 D6).
@@ -102,12 +111,21 @@ export const scratchDir = () => { const d = join(worcaHome(), 'tmp', 'requiremen
 /** D8: the first plain (not [1m]) Opus in the catalog, which lists the newest first. */
 export async function requirementsModel(list = listModels) {
   try {
-    const m = (await list(null)).find((x) => x && /^claude-opus-/.test(x.id) && !x.id.includes('['));
+    const rows = await list(null);
+    // On a Codex-default install the interview runs on Codex's strongest listed model; Claude's Opus otherwise, and
+    // as the fallback when the catalog carries no such Codex model.
+    if (DEFAULT_ENGINE === 'codex') {
+      const c = rows.find((x) => x && x.id === REQUIREMENTS_CODEX_MODEL);
+      if (c) return c.id;
+    }
+    const m = rows.find((x) => x && /^claude-opus-/.test(x.id) && !x.id.includes('['));
     return m ? m.id : undefined;
   } catch { return undefined; }
 }
 
 export const DEFAULT_INTERVIEW_EFFORT = 'medium';
+/** The Codex model a Requirements interview runs on when nothing is set (the deep-thinking tier of its list). */
+export const REQUIREMENTS_CODEX_MODEL = 'gpt-6-astra';
 
 /**
  * A1.1 D2: the model and effort of an interview call. The stored `requirementsInterview` pair counts for
@@ -277,16 +295,36 @@ export async function callModel(d, { kind, cwd, prompt, model, timeoutMs, signal
   const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
   let costUsd = 0;
   const events = [];
+  const onEach = (e) => {
+    events.push(e);
+    if (e.type !== 'result' || e.costUsd == null) return;
+    const c = resolveModelCost(model, Number(e.costUsd), e.usage ?? null);
+    if (Number.isFinite(c)) costUsd += c;
+    else if (Number.isFinite(Number(e.costUsd))) costUsd += Number(e.costUsd);
+  };
+  // A model of another harness (Codex) is run by that harness, read-only. Its shell is off there, so a call with
+  // tools looks through worca's own read_file / grep / glob, rooted at the one folder the call may see: the repo
+  // for a look, the private folder that holds only the copy for a guarded file read. That confinement stands in for
+  // the file-read guard, which is a Claude Code hook (`confinedRead` on the result; attachment-job.mjs guardCovered).
+  const engine = (d.engineOfModel || helperEngineOfModel)(model);
+  let mcpConfigPath = null;
   try {
+    if (engine) {
+      const withTools = Array.isArray(options.tools) && options.tools.length > 0;
+      const root = options.readGuard ? dirname(options.readGuard) : cwd;
+      if (withTools) mcpConfigPath = (d.writeFilesMcp || writeFilesMcpConfig)({ dir: scratchDir(), roots: [root], name: 'requirements' });
+      const res = await d.runClaudeImpl({
+        cwd, systemPrompt: withTools ? `${options.systemPrompt}\n\nYou have no shell. Read files only with the read_file, grep and glob tools, giving absolute paths under ${root}.` : options.systemPrompt,
+        prompt, model, engine, sandbox: 'read-only',
+        ...(options.effort ? { effort: options.effort } : {}),
+        ...(mcpConfigPath ? { mcpConfigPath } : {}),
+        spawnKind: 'aux', signal: ctrl.signal, onEvent: onEach,
+      });
+      return { text: res?.text || '', costUsd, events, ...(options.readGuard ? { confinedRead: root } : {}) };
+    }
     const res = await d.runClaudeImpl({
       ...options, signal: ctrl.signal,
-      onEvent: normalizingOnEvent((e) => {
-        events.push(e);
-        if (e.type !== 'result' || e.costUsd == null) return;
-        const c = resolveModelCost(model, Number(e.costUsd), e.usage ?? null);
-        if (Number.isFinite(c)) costUsd += c;
-        else if (Number.isFinite(Number(e.costUsd))) costUsd += Number(e.costUsd);
-      }),
+      onEvent: normalizingOnEvent(onEach),
     });
     return { text: res?.text || '', costUsd, events, ...(Array.isArray(res?.readGuardDecisions) ? { readGuardDecisions: res.readGuardDecisions } : {}) };
   } catch (err) {
@@ -299,6 +337,7 @@ export async function callModel(d, { kind, cwd, prompt, model, timeoutMs, signal
   } finally {
     clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', onAbort);
+    if (mcpConfigPath) { try { rmSync(mcpConfigPath, { force: true }); } catch { /* best-effort */ } }
   }
 }
 
