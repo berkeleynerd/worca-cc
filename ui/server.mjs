@@ -2947,7 +2947,8 @@ const startRunHandler = async (req, res) => {
 
     // Run body's engine/consent fields (harness bridge §10.4). `{}` for a default/Claude body,
     // so both `claude:` blocks below keep exactly today's keys.
-    const engineShape = runEngineOpts(body, hasWorkspace ? { workspace: true } : { projectDir: resolveProjectDir(body.projectDir) });
+    // A start from a preset whose setup names no engine runs on Claude (setupEngineBody), as its check above assumed.
+    const engineShape = runEngineOpts(presetRow ? setupEngineBody(body) : body, hasWorkspace ? { workspace: true } : { projectDir: resolveProjectDir(body.projectDir) });
     if (engineShape.error) return badRequest(res, engineShape.error);
     const runEngine = engineShape.opts;
 
@@ -3173,7 +3174,7 @@ const startRunHandler = async (req, res) => {
       // Run presets slice 2 (#712): the run's setup, kept on the row for Save setup as preset. The RAW body
       // overlay (D4): the checked runOverlay carries effort '' for model-only picks, which a New run save drops.
       const runSetup = scanTarget || memoryScope ? null
-        : await runSetupOf({ ...body, workflowId, guardrailsId }, { workspaceId: ws.id });
+        : await runSetupOf({ ...body, workflowId, guardrailsId, ...(runEngine.engine ? { engine: runEngine.engine } : {}) }, { workspaceId: ws.id });   // as the project branch below
 
       const wsBuilt = buildWorkspaceMembers(projects, branch, sourceByKey);
       const wsMembers = [];
@@ -3335,6 +3336,7 @@ const startRunHandler = async (req, res) => {
             projectDir, prompt: effectivePrompt, title, agentsDir: AGENTS_DIR, workflowId, template: workflowRow, guardrailsId,
             workMode, ...(projectRow && workMode !== 'git' ? { projectKey: projectRow.key } : {}),
             mcpOptOut: await knownMcpOptOut(optOut.list, { kind: 'project', key: runKey, name: path.basename(projectDir), rank: 0 }),
+            ...(memoryScope ? { memoryScope } : {}),   // a Memory defragment probe needs its scope, as the run does (else the constructor throws: a 500)
             claude: { mock, ...runEngine },
           });
           const refusal = await probe.engineStartRefusal();
@@ -3347,7 +3349,7 @@ const startRunHandler = async (req, res) => {
       // Run presets slice 2 (#712): the run's setup, kept on the row for Save setup as preset. The RAW body
       // overlay (D4): the checked runOverlay carries effort '' for model-only picks, which a New run save drops.
       const runSetup = scanTarget || memoryScope ? null
-        : await runSetupOf({ ...body, workflowId, guardrailsId }, { projectDir });
+        : await runSetupOf({ ...body, workflowId, guardrailsId, ...(runEngine.engine ? { engine: runEngine.engine } : {}) }, { projectDir });   // the engine the run resolved: a setup with none means Claude
 
       // Scans and defrag never sync: skip the default-branch lookup and settings reads entirely, so
       // the window between the one-defrag-per-scope check and runs.set does not widen.
@@ -8016,9 +8018,13 @@ function sendPresetError(res, err) {
 }
 const presetBad = (message) => Object.assign(new Error(message), { code: 'BAD_PRESET' });
 
+/** A stored setup that names no engine is a Claude setup: the New run form reads it so, and it was saved when Claude
+ *  was the only default. It never follows the run.engine default (DEFAULT_ENGINE), which is for new work only. */
+const setupEngineBody = (setup) => (setup && (setup.engine === undefined || setup.engine === null || setup.engine === '') ? { ...setup, engine: 'claude' } : setup);
+
 /** The engine a setup runs on a target ('claude' when none), or throws BAD_PRESET with runEngineOpts' message. */
 function presetEngineOf(setup, target) {
-  const r = runEngineOpts(setup, target.workspaceId ? { workspace: true } : { projectDir: target.projectDir || '' });
+  const r = runEngineOpts(setupEngineBody(setup || {}), target.workspaceId ? { workspace: true } : { projectDir: target.projectDir || '' });
   if (r.error) throw presetBad(r.error);
   return r.opts || {};
 }
