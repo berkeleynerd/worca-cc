@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, chmod, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveTitleModel, describeTitleModel, generateTitle, auxTextCall, DEFAULT_TITLE_MODEL } from '../src/core/title.mjs';
+import { resolveTitleModel, describeTitleModel, generateTitle, auxTextCall, helperEngineOfModel, DEFAULT_TITLE_MODEL } from '../src/core/title.mjs';
 import { AUX_EFFORT } from '../src/core/model-env.mjs';
 import { createOrchestrator } from '../src/core/orchestrator.mjs';
 import { useTempHome } from './helpers/temp-home.mjs';
@@ -278,4 +278,68 @@ test('auxTextCall: forwards the prompts, books a priced result, rethrows a spawn
   assert.equal(costs.length, 1);
   assert.equal(costs[0].model, 'claude-haiku-4-5');
   await assert.rejects(auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'm' }, { ...offline, run: async () => { throw new Error('boom'); } }), /boom/);
+});
+
+// ── helper jobs run on the harness of their model ──
+const OWNERS = { 'gpt-6-luna': 'codex', 'claude-haiku-4-5': 'claude', 'cursor-fast': 'cursor', 'copilot-gpt': 'copilot' };
+
+test('helperEngineOfModel: a Codex model is run by codex; a Claude model, a model of a harness that runs no helper jobs, no model and an unreadable owner are Claude (null)', () => {
+  const asked = [];
+  const owner = (m) => { asked.push(m); return OWNERS[m] ?? null; };
+  assert.equal(helperEngineOfModel('gpt-6-luna', owner), 'codex');
+  assert.equal(helperEngineOfModel('claude-haiku-4-5', owner), null);
+  assert.equal(helperEngineOfModel('cursor-fast', owner), null, 'Cursor runs no helper jobs (HELPER_ENGINES)');
+  assert.equal(helperEngineOfModel('copilot-gpt', owner), null);
+  assert.equal(helperEngineOfModel('unknown-model', owner), null);
+  assert.deepEqual(asked, ['gpt-6-luna', 'claude-haiku-4-5', 'cursor-fast', 'copilot-gpt', 'unknown-model']);
+  for (const none of [undefined, null, '', '   ', 42]) assert.equal(helperEngineOfModel(none, () => { throw new Error('not asked'); }), null);
+  assert.equal(helperEngineOfModel('gpt-6-luna', () => { throw new Error('catalog unreadable'); }), null);
+  // The built-in catalog (a temp home here): a built-in Codex id is Codex's, the built-in title model Claude's.
+  assert.equal(helperEngineOfModel('gpt-6-luna'), 'codex');
+  assert.equal(helperEngineOfModel(DEFAULT_TITLE_MODEL), null);
+});
+
+test('auxTextCall routes by the model: a Codex model runs on codex read-only with none of the claude CLI lockdown options; a Claude model as before; a named engine wins', async () => {
+  const seen = [];
+  const run = async (o) => { seen.push(o); return { text: 'T' }; };
+  const engineOfModel = (m) => OWNERS[m] ?? null;
+  const base = { ...offline, run, cwd: '/tmp', engineOfModel };
+
+  assert.equal(await auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'gpt-6-luna' }, base), 'T');
+  let o = seen.at(-1);
+  assert.deepEqual([o.engine, o.sandbox, o.model, o.effort, o.spawnKind], ['codex', 'read-only', 'gpt-6-luna', AUX_EFFORT, 'aux']);
+  assert.equal(o.modelEnv, undefined, 'no claude CLI routing env for another harness');
+  assert.equal(o.tools, undefined);
+  assert.equal(o.strictMcpConfig, undefined);
+  assert.equal('askLockdown' in o, false);
+  assert.deepEqual(o.allowedTools, []);
+
+  await auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'claude-haiku-4-5' }, base);
+  o = seen.at(-1);
+  assert.equal('engine' in o, false, 'Claude: no engine named');
+  assert.equal('sandbox' in o, false);
+  assert.deepEqual([o.model, o.effort, o.tools, o.strictMcpConfig], ['claude-haiku-4-5', AUX_EFFORT, [], true]);
+
+  // No model: nothing to look up, the claude CLI's default.
+  await auxTextCall({ systemPrompt: 'S', prompt: 'P' }, { ...base, engineOfModel: () => { throw new Error('not asked'); } });
+  assert.equal('engine' in seen.at(-1), false);
+
+  // The caller's engine decides before the model's (a chat's helper call on the chat's engine).
+  await auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'claude-haiku-4-5', engine: 'codex' }, { ...base, engineOfModel: () => { throw new Error('not asked'); }, askLockdown: true, effort: 'high' });
+  o = seen.at(-1);
+  assert.deepEqual([o.engine, o.sandbox, o.askLockdown, o.effort], ['codex', 'read-only', true, 'high'], 'another harness takes the caller\'s effort');
+  await auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'gpt-6-luna' }, { ...base, effort: 'high', effortOverride: 'medium' });
+  assert.equal(seen.at(-1).effort, 'medium');
+  // A Claude call ignores opts.effort: AUX_EFFORT, as before.
+  await auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'claude-haiku-4-5' }, { ...base, effort: 'high' });
+  assert.equal(seen.at(-1).effort, AUX_EFFORT);
+});
+
+test('auxTextCall on a Codex model books its cost from the already-normalized result', async () => {
+  const costs = [];
+  const run = async (o) => { o.onEvent({ type: 'result', costUsd: 0.002, usage: { input_tokens: 5, output_tokens: 2 }, text: 'T' }); return { text: 'T' }; };
+  await auxTextCall({ systemPrompt: 'S', prompt: 'P', model: 'gpt-6-luna' }, { ...offline, run, cwd: '/tmp', engineOfModel: () => 'codex', onCost: (c) => costs.push(c) });
+  assert.equal(costs.length, 1);
+  assert.equal(costs[0].model, 'gpt-6-luna');
+  assert.ok(Number.isFinite(costs[0].costUsd) && costs[0].costUsd > 0);
 });

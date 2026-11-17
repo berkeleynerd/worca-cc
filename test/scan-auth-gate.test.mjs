@@ -187,6 +187,16 @@ test('POST /api/pr/describe of a Codex run: codex\'s own error, never the Claude
   assert.match(body.error, /401 Unauthorized/);
 });
 
+test('POST /api/pinpoint on the default Chat harness (Codex): codex\'s own error, never the Claude sign-in line', { skip }, async () => {
+  const r = await post('/api/pinpoint', { action: 'explain', quote: 'fails open' });
+  assert.equal(r.status, 200);
+  const lines = (await r.text()).trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(lines.length, 1, JSON.stringify(lines));
+  assert.equal(lines[0].type, 'error');
+  assert.match(lines[0].error, /401 Unauthorized/);
+  assert.doesNotMatch(lines[0].error, /Claude Code|\/login/);
+});
+
 test('GET /api/onboarding: signed-out Claude is not ticked; ?recheck=1 answers the same', { skip }, async () => {
   for (const q of ['', '?recheck=1']) {
     const s = await (await fetch(`${base}/api/onboarding${q}`)).json();

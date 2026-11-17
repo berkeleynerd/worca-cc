@@ -7,8 +7,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   validatePinpointInput, buildExplainPrompt, buildAlternativesPrompt, parseAlternatives, runPinpoint, PINPOINT_QUOTE_MAX,
-  PINPOINT_CONTEXT_MAX, pinpointCwd,
+  PINPOINT_CONTEXT_MAX, pinpointCwd, pinpointModel,
 } from '../src/core/pinpoint.mjs';
+import { CODEX_DEFAULT_MODEL } from '../src/core/engines/codex.mjs';
+import { useTempHome } from './helpers/temp-home.mjs';
+
+useTempHome(after);   // runPinpoint asks the catalog which harness owns its model: never the developer's own settings
 
 const scratch = await mkdtemp(join(tmpdir(), 'pinpoint-'));
 after(() => rm(scratch, { recursive: true, force: true }));
@@ -72,6 +76,38 @@ test('runPinpoint explain: streams deltas, no tools, no MCP, scrubbed env', asyn
   assert.equal(o.includePartialMessages, true);
   assert.equal(o.model, 'claude-haiku');
   assert.equal(o.cwd, join(scratch, 'tmp', 'pinpoint'));
+});
+
+test('runPinpoint on a Codex model: answered by codex in its read-only sandbox, no claude CLI routing env; the final text arrives in one piece', async () => {
+  const { run, calls } = fakeRun({ text: 'It lets requests through.' });
+  const got = [];
+  const out = await runPinpoint({ action: 'explain', quote: 'fails open' }, { cwd: pinpointCwd(scratch), model: 'gpt-6-luna', run, onDelta: (t) => got.push(t) });
+  assert.deepEqual(out, { text: 'It lets requests through.' });
+  assert.deepEqual(got, ['It lets requests through.']);
+  const o = calls[0];
+  assert.deepEqual([o.engine, o.sandbox, o.model, o.spawnKind], ['codex', 'read-only', 'gpt-6-luna', 'aux']);
+  assert.equal('modelEnv' in o, false);
+  assert.deepEqual([o.tools, o.allowedTools, o.envScrub, o.envAllowlist], [[], [], true, []], 'the same no-tools, scrubbed call');
+  // A Claude model: the claude CLI, as before.
+  await runPinpoint({ action: 'explain', quote: 'q' }, { cwd: pinpointCwd(scratch), model: 'claude-haiku-4-5', run });
+  assert.equal('engine' in calls[1], false);
+  assert.equal('modelEnv' in calls[1], true);
+});
+
+test('pinpointModel: the Chat model of the engine for new chats when it runs helper jobs; Codex falls to its default; any other chat engine keeps Claude\'s', () => {
+  const settings = (map) => (id) => ({ value: map[id] });
+  assert.equal(pinpointModel(settings({ askEngine: 'codex', 'models.codex.ask': { model: 'gpt-6-astra' }, 'models.claude.ask': { model: 'claude-opus-5-5' } })), 'gpt-6-astra');
+  assert.equal(pinpointModel(settings({ askEngine: 'codex', 'models.claude.ask': { model: 'claude-opus-5-5' } })), CODEX_DEFAULT_MODEL, 'no Codex Chat model: its default, never Claude\'s');
+  assert.equal(pinpointModel(settings({ askEngine: 'claude', 'models.claude.ask': { model: 'claude-opus-5-5' }, 'models.codex.ask': { model: 'gpt-6-astra' } })), 'claude-opus-5-5');
+  assert.equal(pinpointModel(settings({ askEngine: 'claude' })), undefined, 'no Claude Chat model: the CLI default');
+  assert.equal(pinpointModel(settings({ 'models.claude.ask': { model: 'claude-opus-5-5' } })), 'claude-opus-5-5', 'no engine resolved reads as Claude');
+  // Copilot, Cursor, Gemini CLI… run chats but no helper jobs: their Chat model is never handed to the claude CLI.
+  for (const askEngine of ['copilot', 'cursor', 'gemini', 'goose', 'opencode', 'qwen']) {
+    assert.equal(pinpointModel(settings({ askEngine, [`models.${askEngine}.ask`]: { model: 'copilot/gpt-5.4' }, 'models.claude.ask': { model: 'claude-opus-5-5' } })), 'claude-opus-5-5', askEngine);
+  }
+  assert.equal(pinpointModel(() => { throw new Error('settings unreadable'); }), undefined);
+  // The real settings of a fresh install: Chat starts on Codex, so Pinpoint answers on Codex's default model.
+  assert.equal(pinpointModel(), CODEX_DEFAULT_MODEL);
 });
 
 test('runPinpoint explain without partial messages still answers once; an empty answer throws', async () => {
