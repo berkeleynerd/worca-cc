@@ -30,6 +30,7 @@ import { strongestClass } from '../recoverable-error.mjs';
 import { ARGV_INLINE_LIMIT } from './claude.mjs';
 import { CODEX_PRICES, codexCachedRate } from '../list-prices.mjs';
 import { codexEndpointSpawn, findCodexEndpointEntry, hasCodexEndpoint } from './codex-endpoint.mjs';
+import { codexUserProviderSpawn } from './codex-user-provider.mjs';
 import { makeChatDescriptor, openaiListRates } from './chat-descriptor.mjs';
 import { chatEnginesTaking } from '../../shared/engine-switch.mjs';
 import { scopeLauncherEnv } from '../mcp/launch.mjs';
@@ -762,9 +763,12 @@ export async function runCodexProcess({
   // A model on its own OpenAI-compatible endpoint (codex-endpoint.mjs): codex connects to it directly. Throws
   // (auth class) before any spawn when the endpoint has no usable key.
   const endpoint = codexEndpointSpawn(model);
+  // No endpoint of its own: the model runs on the user's codex sign-in. When that sign-in is a model
+  // provider in their config.toml, --ignore-user-config would drop it (codex-user-provider.mjs).
+  const userProvider = endpoint ? null : codexUserProviderSpawn();
   // MCP registry §5.5.3: with registry secrets in this spawn's env, every emit, the result text and the error leave
   // redacted. The endpoint's key and header values are redacted the same way.
-  const secrets = [...(Array.isArray(redactValues) ? redactValues : []), ...(endpoint ? endpoint.secrets : [])];
+  const secrets = [...(Array.isArray(redactValues) ? redactValues : []), ...(endpoint ? endpoint.secrets : []), ...(userProvider ? userProvider.secrets : [])];
   const redactor = secrets.length ? createRedactor(secrets) : null;
   if (redactor) { const emit = onEvent; onEvent = (e) => emit(redactor.deep(e)); }
   const redacted = (err) => {
@@ -859,6 +863,7 @@ export async function runCodexProcess({
   const mcp = codexMcpOverrides(mcpServers, { passEnv: Object.keys(env), disabledTools: plan.mcpToolsOff });
   // The endpoint's key and headers join codex's env only now, so no MCP server is handed them.
   if (endpoint) { Object.assign(env, endpoint.env); extra.push(...endpoint.args); }
+  if (userProvider) { Object.assign(env, userProvider.env); extra.push(...userProvider.args); }
   const args = buildCodexArgs({ systemPrompt: sys, model: endpoint ? endpoint.model : model, effort, resumeThreadId: thread, addDirs: dirs, sandbox, mcp: [...mcp.args, ...extra],
     ...(askLockdown ? { lockdown, images } : {}) });
   let sawThread = thread;
