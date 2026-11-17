@@ -5,11 +5,13 @@
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { helperEngineOfModel } from './title.mjs';
+import { resolveSetting } from './settings-cascade.mjs';
+import { CODEX_DEFAULT_MODEL } from './engines/codex.mjs';
 import { runClaude } from './claude-runner.mjs';
 import { normalizingOnEvent } from './engines/claude-events.mjs';
 import { resolveModelEnv } from './config.mjs';
 import { safeParseJson } from './protocol.mjs';
-import { AUX_EFFORT } from './model-env.mjs';
+import { AUX_EFFORT, HELPER_ENGINES } from './model-env.mjs';
 
 export const PINPOINT_QUOTE_MAX = 4000;
 export const PINPOINT_CONTEXT_MAX = 12000;
@@ -104,6 +106,18 @@ export function parseAlternatives(text) {
       .map((t) => ({ tone: TONES.has(t && t.tone) ? t.tone : 'warn', text: clean(t && t.text, 60) }))
       .filter((t) => t.text).slice(0, 3),
   })).filter((a) => a.title).slice(0, 3);
+}
+
+/** The model a Pinpoint answer runs on: the Chat model of the engine for new chats when that engine runs helper jobs
+ *  (Claude or Codex; Codex's own default model when none is set). Any other chat engine cannot answer here (its model
+ *  would be handed to the claude CLI), so Pinpoint keeps Claude's Chat model, as before. Never throws. */
+export function pinpointModel(resolve = resolveSetting) {
+  try {
+    const set = resolve('askEngine').value || 'claude';
+    const askEngine = HELPER_ENGINES.includes(set) ? set : 'claude';
+    const model = resolve(`models.${askEngine}.ask`).value?.model || undefined;
+    return model || (askEngine === 'codex' ? CODEX_DEFAULT_MODEL : undefined);
+  } catch { return undefined; }
 }
 
 /**

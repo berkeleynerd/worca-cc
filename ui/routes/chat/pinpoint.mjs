@@ -5,11 +5,10 @@ import { mockEnabled } from '../../../src/core/claude-runner.mjs';
 import { budgetStatus } from '../../../src/core/cost-budget.mjs';
 import { demoChunks, demoPinpointReply } from '../../../src/core/demo-scenario.mjs';
 import { mockSlowMs } from '../../../src/core/engines/mock.mjs';
-import { CODEX_DEFAULT_MODEL } from '../../../src/core/engines/codex.mjs';
-import { pinpointCwd, runPinpoint, validatePinpointInput } from '../../../src/core/pinpoint.mjs';
+import { pinpointCwd, pinpointModel, runPinpoint, validatePinpointInput } from '../../../src/core/pinpoint.mjs';
 import { CLAUDE_SIGNED_OUT_MESSAGE } from '../../../src/core/preflight.mjs';
 import { worcaHome } from '../../../src/core/projects.mjs';
-import { resolveSetting } from '../../../src/core/settings-cascade.mjs';
+import { helperEngineOfModel } from '../../../src/core/title.mjs';
 import { badRequest, brokerStartRefusal } from '../../server.mjs';
 
 export function register(app) {
@@ -47,13 +46,8 @@ app.post('/api/pinpoint', async (req, res) => {
   if (budget.blocked) return res.status(403).json({ error: 'total cost limit reached', budget });
   if (pinpointInFlight >= PINPOINT_MAX_IN_FLIGHT) return res.status(429).json({ error: `at most ${PINPOINT_MAX_IN_FLIGHT} Pinpoint answers may run at once` });
   const mock = mockEnabled({});
-  let model;
   // Pinpoint answers on the chat's harness: the engine for new chats and its Chat model (Codex in this fork by default).
-  try {
-    const askEngine = resolveSetting('askEngine').value || 'claude';
-    model = resolveSetting(`models.${askEngine}.ask`).value?.model || undefined;
-    if (!model && askEngine === 'codex') model = CODEX_DEFAULT_MODEL;
-  } catch { model = undefined; }
+  const model = pinpointModel();
   if (!mock) {
     const refusal = await brokerStartRefusal(req, [String(model || '')]);
     if (refusal) return res.status(409).json({ error: refusal, code: 'credential-missing' });
@@ -114,7 +108,9 @@ app.post('/api/pinpoint', async (req, res) => {
   } catch (err) {
     if (!ac.signal.aborted) {
       const msg = err && err.message ? err.message : String(err);
-      send({ type: 'error', error: await failedBecauseSignedOut({ message: msg }) ? CLAUDE_SIGNED_OUT_MESSAGE : msg });
+      // Only an answer the claude CLI ran can have failed for Claude's sign-in: another harness's error is its own.
+      const onClaude = !helperEngineOfModel(model);
+      send({ type: 'error', error: onClaude && await failedBecauseSignedOut({ message: msg }) ? CLAUDE_SIGNED_OUT_MESSAGE : msg });
     }
   } finally {
     pinpointInFlight -= 1;
