@@ -1,5 +1,5 @@
 // test/run-engine-default.test.mjs — the run's engine when the request names none (plans/cascading-settings-design.md
-// §4.2, D7, §8 test 3): run > project > user > claude; a workspace run has no project layer; resume never re-reads settings.
+// §4.2, D7, §8 test 3): run > project > user > codex (DEFAULT_ENGINE); a workspace run has no project layer; resume never re-reads settings.
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { useTempHome } from './helpers/temp-home.mjs';
 import { resolveRunEngine, writeProjectSettings } from '../src/core/settings-cascade.mjs';
 import { assertRunEngineInput } from '../src/core/settings.mjs';
+import { DEFAULT_ENGINE } from '../src/shared/engine-switch.mjs';
 import { createOrchestrator } from '../src/core/orchestrator.mjs';
 
 useTempHome(after);
@@ -24,21 +25,23 @@ after(() => {
 const writeUser = (obj) => { mkdirSync(join(home, '.worca-cc'), { recursive: true }); writeFileSync(join(home, '.worca-cc', 'settings.json'), JSON.stringify(obj)); };
 beforeEach(() => { writeUser({}); writeProjectSettings({ projectDir: dir }, { 'run.engine': null }); });
 
-test('engine order: the run names it > project > user > claude', () => {
-  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'claude', source: 'default' });
-  writeUser({ runEngine: 'codex' });
-  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'codex', source: 'user' });
-  writeProjectSettings({ projectDir: dir }, { 'run.engine': 'claude' });
-  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'claude', source: 'project' });
+test('engine order: the run names it > project > user > codex', () => {
+  assert.equal(DEFAULT_ENGINE, 'codex');
+  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'codex', source: 'default' });
+  writeUser({ runEngine: 'claude' });
+  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'claude', source: 'user' });
+  writeProjectSettings({ projectDir: dir }, { 'run.engine': 'cursor' });
+  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'cursor', source: 'project' });
   assert.deepEqual(resolveRunEngine({ explicit: ' codex ', projectDir: dir }), { engine: 'codex', source: 'run' });
   assert.deepEqual(resolveRunEngine({ explicit: 'codx', projectDir: dir }), { engine: 'codx', source: 'run' }, 'the harness still names a bad engine');
-  assert.deepEqual(resolveRunEngine({ explicit: '', projectDir: dir }), { engine: 'claude', source: 'project' });
+  assert.deepEqual(resolveRunEngine({ explicit: '', projectDir: dir }), { engine: 'cursor', source: 'project' });
 });
 
 test('a workspace run ignores the project default (Review Focus 4)', () => {
-  writeProjectSettings({ projectDir: dir }, { 'run.engine': 'codex' });
-  assert.deepEqual(resolveRunEngine({ projectDir: dir, workspace: true }), { engine: 'claude', source: 'default' });
-  assert.deepEqual(resolveRunEngine({}), { engine: 'claude', source: 'default' });
+  writeProjectSettings({ projectDir: dir }, { 'run.engine': 'claude' });
+  assert.deepEqual(resolveRunEngine({ projectDir: dir }), { engine: 'claude', source: 'project' });
+  assert.deepEqual(resolveRunEngine({ projectDir: dir, workspace: true }), { engine: 'codex', source: 'default' });
+  assert.deepEqual(resolveRunEngine({}), { engine: 'codex', source: 'default' });
 });
 
 test('resume never re-reads settings: the saved engine wins (D7)', () => {

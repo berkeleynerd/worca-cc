@@ -270,7 +270,8 @@ test('a CLI defragment run picks up the Settings › Memory pair; --model named 
   writeFileSync(join(home, '.worca-cc', 'settings.json'), JSON.stringify({ memory: { defrag: { model: 'claude-haiku-4-5', effort: 'high' } } }));
   // settings.json lives under HOME: sandbox it and lift the test runner's HOME guard for the child.
   const env = { ...process.env, WORCA_MOCK: '1', HOME: home, USERPROFILE: home, WORCA_TEST_ALLOW_HOME_FALLBACK: '1', WORCA_PROJECTS_ROOT: home };
-  const run = (extra) => spawnSync(process.execPath, [CLI, '--project', freshRepo(), '--workflow', 'wf_memory_defrag', '--memory-scope', 'global', '--mock', '--yes', ...extra], { env, encoding: 'utf8' });
+  // Settings › Memory is Claude's defragment slot, so the run names Claude (a run on Codex takes Models › Codex).
+  const run = (extra) => spawnSync(process.execPath, [CLI, '--project', freshRepo(), '--workflow', 'wf_memory_defrag', '--memory-scope', 'global', '--engine', 'claude', '--mock', '--yes', ...extra], { env, encoding: 'utf8' });
   const nDefrag = () => JSON.parse(getDb().prepare('SELECT stepper FROM pipelines ORDER BY started_at DESC LIMIT 1').get().stepper)
     .graph.nodes.find((n) => n.id === 'n_defrag');
   let r = run([]);

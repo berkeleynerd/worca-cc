@@ -192,8 +192,15 @@ test('shared terminal: the user\'s command in Ask\'s tab never wakes the chat; t
     await new Promise((r) => setTimeout(r, 300));
     await idle();
     assert.equal((await userRows(t.id)).length, before, 'the person command started no turn');
-    const r = await fetch(`${base}/api/ask/threads/${t.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    // The event turn above started this chat on the default harness, Codex: the person's turn names a Codex model
+    // (a Claude one is refused until the chat is switched).
+    const claude = await fetch(`${base}/api/ask/threads/${t.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: 'continue', model: 'claude-opus-5-5', effort: 'high' }) });
+    assert.equal(claude.status, 400);
+    assert.equal((await claude.json()).error, 'this chat runs on Codex; switch it to Claude from the Chat model picker first');
+    assert.equal(taken.length, 0, 'the refused turn took nothing');
+    const r = await fetch(`${base}/api/ask/threads/${t.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'continue', model: 'gpt-6-astra', effort: 'medium' }) });
     assert.ok(r.status < 300, String(r.status)); await r.json();
     await idle();
     const mine = taken.filter((x) => x.id === t.id);

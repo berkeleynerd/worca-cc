@@ -170,7 +170,7 @@ test('POST /api/run validates guardrailsId: unknown 400, non-string 400, a built
   const projectDir = await mkdtemp(join(tmpdir(), 'worca-cc-grrun-'));
   const postRun = (guardrailsId) => fetch(`${base}/api/run`, {
     method: 'POST', headers: JSONH,
-    body: JSON.stringify({ projectDir, prompt: 'demo task', mock: true, guardrailsId }),
+    body: JSON.stringify({ projectDir, prompt: 'demo task', mock: true, engine: 'claude', guardrailsId }),   // Claude holds every set: this test is about the id
   });
   try {
     await checkRows([

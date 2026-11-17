@@ -197,7 +197,7 @@ test('v2 — a foreground run prints its session\'s lines (the orch.on(\'session
   child.stderr.on('data', (b) => { stderr += b; });
   const code = await new Promise((r) => child.on('exit', r));
   assert.equal(code, 0, stderr);
-  assert.match(stdout, new RegExp(`◇ session ${SID} · opened \\(sub-agents on Claude\\)`));
+  assert.match(stdout, new RegExp(`◇ session ${SID} · opened \\(sub-agents on Codex\\)`), 'no --engine: the default harness, Codex');
   assert.match(stdout, new RegExp(`◇ session ${SID} · dispatch Implementation \\(attempt 1, turn 1\\)`), 'the label from the run manifest');
   assert.match(stdout, new RegExp(`◇ session ${SID} · closed · \\d+ turns · \\$`));
 });

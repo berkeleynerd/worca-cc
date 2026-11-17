@@ -48,7 +48,7 @@ test('GET: every cascadable key, what applies and where it comes from', async ()
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.own, {});
   assert.deepEqual(r.body.effective.askMaxTurns, { value: 400, source: 'default' });
-  assert.deepEqual(r.body.effective['run.engine'], { value: 'claude', source: 'default' });
+  assert.deepEqual(r.body.effective['run.engine'], { value: 'codex', source: 'default' });
   assert.ok(r.body.roles.some((s) => s.key === 'planner'), 'the step roles ride along');
   assert.ok('models.codex.steps.planner' in r.body.effective);
   assert.equal('totalCostLimitUsd' in r.body.effective, false, 'user-only keys are not listed');

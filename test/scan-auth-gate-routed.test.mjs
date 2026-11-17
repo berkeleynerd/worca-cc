@@ -73,6 +73,9 @@ before(async () => {
   srv = mod.server;
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${srv.address().port}`;
+  // This install runs on Claude Code through a gateway: it says so. A scan names no engine of its own, so without the
+  // setting it starts on the default harness, Codex, and a real-mode run here would spawn the machine's own codex.
+  assert.equal((await post('/api/settings', { runEngine: 'claude' })).status, 200);
 });
 
 after(async () => {
@@ -91,6 +94,7 @@ test('POST /api/workspaces/scan: signed out, but the scan agent is endpoint-rout
   assert.notEqual(body.code, 'claude-signed-out', JSON.stringify(body));
   assert.equal(r.status, 200, JSON.stringify(body));
   assert.ok(body.runId, 'a run started');
+  assert.equal(runs.get(body.runId).orch.claude.engine, 'claude', 'on the fake claude, never another engine\'s binary');
   await settled(body.runId);
 });
 

@@ -91,7 +91,7 @@ test('SIGTERM pauses a --yes run mid-step: exit 143, a v2 resume point, and `wor
   const repo = freshRepo();
   const stub = sleepyClaude();
   // A second SIGTERM while the first pause lands is ignored: never a stop, never a second pause.
-  const r = await driveSigterm(['--project', repo, '--prompt', 'sigterm pause e2e', '--yes'], stub, { again: true });
+  const r = await driveSigterm(['--project', repo, '--prompt', 'sigterm pause e2e', '--engine', 'claude', '--yes'], stub, { again: true });
   assert.ok(r.sentAt, `the Clarify step never started:\n${r.stdout}\n${r.stderr}`);
   assert.equal(r.signal, null, 'the CLI handled SIGTERM instead of dying of it');
   assert.equal(r.code, 143, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
@@ -124,7 +124,7 @@ test('SIGTERM pauses a --yes run mid-step: exit 143, a v2 resume point, and `wor
 test('SIGTERM with a wedged pause still exits 143 once WORCA_SIGTERM_GRACE_MS runs out', POSIX, async () => {
   const repo = freshRepo();
   const stub = sleepyClaude({ wedge: true });
-  const r = await driveSigterm(['--project', repo, '--prompt', 'sigterm wedge e2e', '--yes'], stub, {
+  const r = await driveSigterm(['--project', repo, '--prompt', 'sigterm wedge e2e', '--engine', 'claude', '--yes'], stub, {
     // The runner's SIGKILL escalation comes long after the CLI's own grace: only the grace can end it.
     env: { WORCA_SIGTERM_GRACE_MS: '1500', WORCA_SIGKILL_GRACE_MS: '60000' },
   });

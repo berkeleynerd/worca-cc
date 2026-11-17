@@ -133,8 +133,13 @@ test('bound defaults use the real catalog: every predefined id is present, no pr
     assert.equal(typeof e.hasEnv, 'boolean');
   }
   assert.ok(!cat.models.some((m) => m.custom === 'project'), 'project entries never reach the project-less chat');
-  assert.deepEqual(cat.default, { model: ASK_LIMITS.defaultModel, effort: ASK_LIMITS.defaultEffort });
+  // A new chat starts on the default harness, Codex; Claude's own default is still the D8 initial choice.
+  assert.equal(cat.askEngine, 'codex');
+  assert.deepEqual(cat.default, { model: 'gpt-6-astra', effort: 'medium' });
+  assert.deepEqual(cat.default, cat.defaults.codex);
+  assert.deepEqual(cat.defaults.claude, { model: ASK_LIMITS.defaultModel, effort: ASK_LIMITS.defaultEffort });
   assert.equal((await validateModelEffort('claude-opus-5-5', 'high')).ok, true, 'the D8 initial choice validates');
+  assert.equal((await validateModelEffort('gpt-6-astra', 'medium')).ok, true, 'and so does the Codex default');
 });
 
 test('askCatalog: Codex models are offered with their engine and validate (Plan 2, design D12)', async () => {

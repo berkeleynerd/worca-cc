@@ -66,7 +66,8 @@ after(async () => {
 });
 
 test('POST /api/run: overlay.nodes is checked against the workflow and the catalog — a bad one is a 400', { timeout: 60000 }, async () => {
-  const body = { projectDir: project.path, workflowId: 'wf_default', guardrailsId: 'normal', prompt: 'demo task', scheduledFor: DAY() };
+  // The picks below are Claude's, so the run names Claude: a body with no engine starts on Codex (the last rows).
+  const body = { projectDir: project.path, workflowId: 'wf_default', engine: 'claude', guardrailsId: 'normal', prompt: 'demo task', scheduledFor: DAY() };
   for (const [overlay, re] of [
     [[], /^overlay must be an object/],
     [{ nodes: {}, foo: {} }, /^overlay takes nodes and wires only/],
@@ -86,10 +87,20 @@ test('POST /api/run: overlay.nodes is checked against the workflow and the catal
   const auto = await post('/api/run', { ...body, workflowId: 'wf_auto', overlay: { nodes: { n_plan: { model: 'claude-opus-5-5' } } } });
   assert.equal(auto.status, 400);
   assert.match((await auto.json()).error, /^overlay needs a saved workflow/);
+  // No engine named: the default harness is Codex, so a Claude pick is the one refused and a Codex pick is taken.
+  const { engine: _claude, ...bare } = body;
+  const wrong = await post('/api/run', { ...bare, overlay: { nodes: { n_plan: { model: 'claude-opus-5-5' } } } });
+  assert.equal(wrong.status, 400);
+  assert.match((await wrong.json()).error, /node "n_plan": claude-opus-5-5 runs on Claude, not on Codex/);
+  const ok = await post('/api/run', { ...bare, overlay: { nodes: { n_plan: { model: 'gpt-5.5', effort: 'xhigh' } } } });
+  assert.equal(ok.status, 202, JSON.stringify(await ok.clone().json()));
+  const max = await post('/api/run', { ...bare, overlay: { nodes: { n_plan: { model: 'gpt-5.5', effort: 'max' } } } });
+  assert.equal(max.status, 400);
+  assert.match((await max.json()).error, /node "n_plan": model gpt-5\.5 has no effort "max"/);
 });
 
 test('POST /api/run: a normal run resolves the overlay over the project layer for THAT run, records it, writes no config', { timeout: 120000 }, async () => {
-  const r = await post('/api/run', { projectDir: project.path, workflowId: 'wf_default', guardrailsId: 'normal', prompt: 'demo task',
+  const r = await post('/api/run', { projectDir: project.path, workflowId: 'wf_default', engine: 'claude', guardrailsId: 'normal', prompt: 'demo task',
     overlay: { nodes: { n_plan: { model: 'CLAUDE-HAIKU-4-5', effort: 'medium' }, n_impl: { model: 'claude-opus-5-5' } } } });
   const raw = await r.text();
   assert.equal(r.status, 200, raw);
@@ -132,7 +143,7 @@ test('POST /api/run: overlay.wires sets a loop budget for THAT run and is record
 
 test('POST /api/run: a SCHEDULED run stores the overlay as checked (its ticket fires it verbatim)', async () => {
   const { getTicket } = await import('../src/core/scheduler.mjs');
-  const r = await post('/api/run', { projectDir: project.path, workflowId: 'wf_default', guardrailsId: 'normal', prompt: 'later', scheduledFor: DAY(),
+  const r = await post('/api/run', { projectDir: project.path, workflowId: 'wf_default', engine: 'claude', guardrailsId: 'normal', prompt: 'later', scheduledFor: DAY(),
     overlay: { nodes: { n_plan: { model: ' Claude-Haiku-4-5 ', effort: 'high' } } } });
   const j = await r.json();
   assert.equal(r.status, 202, JSON.stringify(j));
@@ -154,11 +165,11 @@ test('POST /api/run: a WORKSPACE run resolves the overlay over its primary membe
     const ws = await createWorkspace({ name: 'overlay ws', projectPaths: dirs });
     const overlay = { nodes: { n_impl: { model: 'CLAUDE-HAIKU-4-5' } } };
     const canonical = { nodes: { n_impl: { model: 'claude-haiku-4-5', effort: '' } } };
-    const s = await post('/api/run', { workspaceId: ws.id, workflowId: 'wf_default', guardrailsId: 'normal', prompt: 'later', scheduledFor: DAY(), overlay });
+    const s = await post('/api/run', { workspaceId: ws.id, workflowId: 'wf_default', engine: 'claude', guardrailsId: 'normal', prompt: 'later', scheduledFor: DAY(), overlay });
     const sj = await s.json();
     assert.equal(s.status, 202, JSON.stringify(sj));
     assert.deepEqual(getTicket(sj.runId, { withRequest: true }).request.overlay, canonical, 'stored as checked');
-    const r = await post('/api/run', { workspaceId: ws.id, workflowId: 'wf_default', guardrailsId: 'normal', prompt: 'now', overlay });
+    const r = await post('/api/run', { workspaceId: ws.id, workflowId: 'wf_default', engine: 'claude', guardrailsId: 'normal', prompt: 'now', overlay });
     const raw = await r.text();
     assert.equal(r.status, 200, raw);
     const { runId } = JSON.parse(raw);

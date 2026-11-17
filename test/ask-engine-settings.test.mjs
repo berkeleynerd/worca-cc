@@ -28,9 +28,9 @@ after(async () => {
   await rm(sandboxHome, { recursive: true, force: true });
 });
 
-test('defaults: askEngine claude, no Ask slots; the ids resolve but the project settings list does not carry them', async () => {
+test('defaults: askEngine codex, no Ask slots; the ids resolve but the project settings list does not carry them', async () => {
   const { resolveSetting, settingIds, settingEntry } = await import('../src/core/settings-cascade.mjs');
-  assert.deepEqual(resolveSetting('askEngine'), { value: 'claude', source: 'default', layers: { project: undefined, user: undefined, team: undefined, default: 'claude' } });
+  assert.deepEqual(resolveSetting('askEngine'), { value: 'codex', source: 'default', layers: { project: undefined, user: undefined, team: undefined, default: 'codex' } });
   assert.equal(resolveSetting('models.codex.ask').value, undefined);
   assert.equal(settingEntry('models.claude.ask').userOnly, true);
   assert.equal(settingIds({ roles: ['planner'] }).some((id) => id === 'askEngine' || id.endsWith('.ask')), false);

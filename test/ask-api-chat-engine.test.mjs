@@ -52,7 +52,8 @@ test('a Claude model in a Codex chat is still refused on POST and PATCH: switchi
 test('GET /api/ask/models: per-engine defaults, Codex included; a fresh chat may pick either engine until its first reply', async () => {
   const cat = await (await fetch(`${base}/api/ask/models`)).json();
   assert.equal(cat.models.some((m) => m.engine === 'codex'), true);
-  assert.equal(cat.askEngine, 'claude');
+  assert.equal(cat.askEngine, 'codex', 'a new chat starts on the default harness');
+  assert.deepEqual(cat.default, cat.defaults.codex);
   assert.ok(cat.defaults.codex && cat.defaults.codex.model);
   assert.ok(cat.defaults.claude && cat.defaults.claude.model);
   const t = store.createThread();

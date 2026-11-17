@@ -113,13 +113,54 @@ test('a preset run with only a prompt sends the hand-made body plus the run-only
 });
 
 test('the pick-time engine probe checks a preset naming no guardrails against the install default (V21)', async () => {
-  // A fresh install starts runs on Normal, which carries rules codex cannot enforce; Permissive carries none.
-  const { preset } = await (await post('/api/presets', { name: 'Codex bare', setup: { workflowId: 'wf_default', engine: 'codex', mock: true },
+  // A fresh install starts runs on Normal, which carries rules cursor cannot enforce; Permissive carries none.
+  const { preset } = await (await post('/api/presets', { name: 'Cursor bare', setup: { workflowId: 'wf_default', engine: 'cursor', mock: true },
     basis: { projectDir: project.path } })).json();
   const check = await (await post(`/api/presets/${preset.id}/check`, { projectDir: project.path })).json();
   assert.deepEqual(check.broken.map((b) => b.item), ['engine'], JSON.stringify(check));
   assert.match(check.broken[0].message, /guardrail set "normal" has permission rules this engine cannot enforce/);
   await send('DELETE', `/api/presets/${preset.id}`).then((r) => r.body?.cancel());
+  // Codex, the default harness, starts on the built-in Normal set without the consent: nothing to name.
+  const codex = (await (await post('/api/presets', { name: 'Codex bare', setup: { workflowId: 'wf_default', engine: 'codex', mock: true },
+    basis: { projectDir: project.path } })).json()).preset;
+  assert.deepEqual((await (await post(`/api/presets/${codex.id}/check`, { projectDir: project.path })).json()).broken, []);
+  // ...and is still refused on Secure.
+  const secure = (await (await post('/api/presets', { name: 'Codex secure', setup: { workflowId: 'wf_default', engine: 'codex', guardrailsId: 'secure', mock: true },
+    basis: { projectDir: project.path } })).json()).preset;
+  const refused = await (await post(`/api/presets/${secure.id}/check`, { projectDir: project.path })).json();
+  assert.deepEqual(refused.broken.map((b) => b.item), ['engine'], JSON.stringify(refused));
+  assert.match(refused.broken[0].message, /guardrail set "secure" has permission rules this engine cannot enforce/);
+  for (const p of [codex, secure]) await send('DELETE', `/api/presets/${p.id}`).then((r) => r.body?.cancel());
+});
+
+test('a stored setup that names no engine is a Claude setup, whatever the install default; a run on the default stores codex', { timeout: 120000 }, async () => {
+  // Saved when Claude was the default: Claude picks, no engine key. The default harness is Codex now.
+  const { preset } = await (await post('/api/presets', { name: 'Legacy Claude', scope: { kind: 'project', projectDir: project.path },
+    setup: { workflowId: 'wf_default', guardrailsId: 'normal', mock: true, humanInLoop: false, overlay: { nodes: { n_plan: { model: 'claude-haiku-4-5' } } } },
+    basis: { projectDir: project.path } })).json();
+  assert.equal('engine' in preset.setup, false);
+  assert.deepEqual((await (await post(`/api/presets/${preset.id}/check`, { projectDir: project.path })).json()).broken, [], 'its Claude picks are not "on the wrong engine"');
+  const r = await post('/api/run', { projectDir: project.path, prompt: 'legacy preset', ...preset.setup, presetId: preset.id });
+  assert.equal(r.status, 200, await r.clone().text());
+  const { runId } = await r.json();
+  const o = runs.get(runId).orch;
+  assert.equal(o.claude.engine, 'claude');
+  assert.equal('engine' in o.opts.claude, false, 'a Claude run names no engine');
+  await waitPipeline(runId);
+  await post('/api/stop', { runId });
+  // The same body without the preset is new work: it starts on the default harness, which refuses Claude picks by name.
+  const bare = await post('/api/run', { projectDir: project.path, prompt: 'no preset', ...preset.setup });
+  assert.equal(bare.status, 400);
+  assert.match((await bare.json()).error, /node "n_plan": claude-haiku-4-5 runs on Claude, not on Codex/);
+  // A run that names no engine and no picks runs on Codex, and its kept setup says so: saved as a preset it stays a Codex one.
+  const d = await post('/api/run', { projectDir: project.path, prompt: 'default harness', workflowId: 'wf_default', guardrailsId: 'normal', mock: true });
+  assert.equal(d.status, 200, await d.clone().text());
+  const def = await d.json();
+  assert.equal(runs.get(def.runId).orch.claude.engine, 'codex');
+  const pid = await waitPipeline(def.runId);
+  assert.equal((await (await get(`/api/pipelines/${pid}/setup`)).json()).setup.engine, 'codex');
+  await post('/api/stop', { runId: def.runId });
+  await send('DELETE', `/api/presets/${preset.id}`).then((x) => x.body?.cancel());
 });
 
 test('a preset whose guardrail set or model is gone is refused with named items', async () => {
@@ -225,7 +266,7 @@ test('a run started before the migration returns no run setup and the save actio
 
 test('a preset saved from a run equals one saved in New run from the same picks; the setup holds no task', { timeout: 120000 }, async () => {
   // n_plan is a model-only pick on purpose (D4): the checked overlay would carry effort '' for it, a New run save does not.
-  const picks = { workflowId: 'wf_default', guardrailsId: 'normal', mock: true,
+  const picks = { workflowId: 'wf_default', engine: 'claude', guardrailsId: 'normal', mock: true,
     overlay: { nodes: { n_plan: { model: 'claude-haiku-4-5' } } } };
   const r = await post('/api/run', { projectDir: project.path, prompt: 'keep my picks', title: 'T', featureBranch: 'feat/x', allowUnguardedEngine: true, ...picks });
   // An immediate start answers 200 { runId }; only a scheduled start (scheduledFor / repeat / after) answers 202, and it

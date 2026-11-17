@@ -36,6 +36,10 @@ test('Settings marks Codex as beta: the engine options and the Codex card headin
   const badge = (engine) => doc.querySelector(`.engine-card[data-engine="${engine}"] h3 .beta-badge`);
   assert.equal(badge('codex')?.textContent, 'Beta');
   assert.equal(badge('claude'), null);
+  // Codex is the default engine for new chats: it is the select's empty choice, named once, so it has no option of its own.
   renderAskEngineSection(doc.getElementById('a'), { catalog: CATALOG });
-  assert.equal(optionText(doc.getElementById('a'), 'askEngine'), 'Codex (beta)');
+  const ask = doc.getElementById('a').querySelector('[data-setting="askEngine"] select');
+  assert.equal(ask.options[0].textContent, 'Codex (default)');
+  assert.equal(ask.querySelector('option[value="codex"]'), null);
+  assert.equal(ask.querySelector('option[value="claude"]').textContent, 'Claude');
 });

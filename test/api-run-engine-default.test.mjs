@@ -50,18 +50,35 @@ after(async () => {
   await rm(sandboxHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }).catch(() => {});
 });
 
-test('a body without an engine starts on the project default (codex refuses this set at once)', async () => {
-  writeProjectSettings({ projectDir }, { 'run.engine': 'codex' });
+test('a body without an engine starts on the install default, codex, on the Normal set with no consent', async () => {
+  const r = await post('/api/run', { projectDir, prompt: 'demo task', mock: true, guardrailsId: 'normal' });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const { runId } = await r.json();
+  const o = runs.get(runId).orch;
+  assert.equal(o.claude.engine, 'codex');
+  assert.equal(o.opts.claude.engine, 'codex');
+  assert.equal(o.opts.claude.allowUnguardedEngine, undefined, 'no consent was sent or assumed');
+  await post('/api/stop', { runId });
+  await untilSettled(runId);
+});
+
+test('a body without an engine starts on the project default (cursor refuses the Normal set at once; codex refuses Secure)', async () => {
+  writeProjectSettings({ projectDir }, { 'run.engine': 'cursor' });
   try {
     const r = await post('/api/run', { projectDir, prompt: 'demo task', mock: true, guardrailsId: 'normal' });
     assert.equal(r.status, 409);
     const data = await r.json();
     assert.equal(data.code, 'engine-refused');
-    assert.match(data.error, /^engine codex: /);
+    assert.match(data.error, /^engine cursor: /);
   } finally { writeProjectSettings({ projectDir }, { 'run.engine': null }); }
+  const secure = await post('/api/run', { projectDir, prompt: 'demo task', mock: true, guardrailsId: 'secure' });
+  assert.equal(secure.status, 409);
+  const data = await secure.json();
+  assert.equal(data.code, 'engine-refused');
+  assert.match(data.error, /^engine codex: guardrail set "secure" has permission rules this engine cannot enforce/);
 });
 
-test('an explicit claude beats the project default (Review Focus 1)', async () => {
+test('an explicit claude beats the project default and the install default (Review Focus 1)', async () => {
   writeProjectSettings({ projectDir }, { 'run.engine': 'codex' });
   try {
     const r = await post('/api/run', { projectDir, prompt: 'demo task', mock: true, guardrailsId: 'normal', engine: 'claude' });
@@ -76,10 +93,11 @@ test('an explicit claude beats the project default (Review Focus 1)', async () =
 });
 
 test('GET /api/run-defaults names the engine New pipeline prefills and where it came from', async () => {
-  assert.deepEqual((await get('/api/run-defaults')).body.engine, { value: 'claude', source: 'default' });
-  writeProjectSettings({ projectDir }, { 'run.engine': 'codex' });
+  assert.deepEqual((await get('/api/run-defaults')).body.engine, { value: 'codex', source: 'default' });
+  assert.deepEqual((await get(`/api/run-defaults?projectDir=${encodeURIComponent(projectDir)}`)).body.engine, { value: 'codex', source: 'default' });
+  writeProjectSettings({ projectDir }, { 'run.engine': 'claude' });
   try {
-    assert.deepEqual((await get(`/api/run-defaults?projectDir=${encodeURIComponent(projectDir)}`)).body.engine, { value: 'codex', source: 'project' });
+    assert.deepEqual((await get(`/api/run-defaults?projectDir=${encodeURIComponent(projectDir)}`)).body.engine, { value: 'claude', source: 'project' });
   } finally { writeProjectSettings({ projectDir }, { 'run.engine': null }); }
 });
 
