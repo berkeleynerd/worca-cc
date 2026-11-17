@@ -32,9 +32,11 @@ test('setStep and setNodeModel validate a pick against its own engine\'s efforts
   await assert.rejects(() => setStep(p, 'planner', { model: 'gpt-5.5', effort: 'max' }), /model "gpt-5.5" does not support effort "max"/);
   await assert.rejects(() => setStep(p, 'planner', { model: 'claude-opus-5-5', effort: 'minimal' }), /model "claude-opus-5-5" does not support effort "minimal"/);
   await assert.rejects(() => setStep(p, 'planner', { model: 'gpt-5.5', effort: 'turbo' }), /unknown effort "turbo"/);
-  await setNodeModel(p, 'wf_x', 'n1', { model: 'gpt-5.6-sol', effort: 'minimal' });
-  assert.deepEqual((await resolveRunConfig(p, 'wf_x')).nodes.n1, { model: 'gpt-5.6-sol', effort: 'minimal' });
-  await assert.rejects(() => setNodeModel(p, 'wf_x', 'n1', { model: 'gpt-5.6-sol', effort: 'xhigh' }), /does not support effort "xhigh"/);
+  await assert.rejects(() => setStep(p, 'planner', { model: 'gpt-5.6-sol', effort: 'minimal' }), /model "gpt-5.6-sol" does not support effort "minimal"/);
+  await setNodeModel(p, 'wf_x', 'n1', { model: 'gpt-5.6-sol', effort: 'ultra' });
+  assert.deepEqual((await resolveRunConfig(p, 'wf_x')).nodes.n1, { model: 'gpt-5.6-sol', effort: 'ultra' });
+  await setNodeModel(p, 'wf_x', 'n1', { model: 'gpt-5.5', effort: 'xhigh' });
+  await assert.rejects(() => setNodeModel(p, 'wf_x', 'n1', { model: 'gpt-5.6-luna', effort: 'ultra' }), /does not support effort "ultra"/);
 });
 
 test('workflow node defaults: a Codex effort survives with its Codex model', () => {

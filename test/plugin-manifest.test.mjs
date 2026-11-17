@@ -813,7 +813,7 @@ test('models: a Codex model names its engine, takes Codex efforts and refuses ro
   const [a, b] = ok.manifest.models;
   assert.equal(a.engine, 'codex');
   assert.deepEqual(a.efforts, ['low', 'high'], 'Codex effort order');
-  assert.deepEqual(b.efforts, ['minimal', 'low', 'medium', 'high'], 'absent efforts -> the full Codex set');
+  assert.deepEqual(b.efforts, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], 'absent efforts -> the full Codex set');
   const claude = normalizeManifest({ name: 'p', models: [{ id: 'bare' }] });
   assert.equal('engine' in claude.manifest.models[0], false, 'a Claude model carries no engine key');
   const env = normalizeManifest({ name: 'p', models: [{ id: 'cx', engine: 'codex', env: { ANTHROPIC_BASE_URL: 'https://x' } }] });
@@ -851,8 +851,8 @@ test('models: a Codex model names its engine, takes Codex efforts and refuses ro
   assert.ok(ocEnv.errors.some((e) => /an opencode model takes no env/.test(e)), JSON.stringify(ocEnv.errors));
   const ocId = normalizeManifest({ name: 'p', models: [{ id: 'bare', engine: 'opencode' }] });
   assert.ok(ocId.errors.some((e) => /an opencode model id is provider\/model/.test(e)), JSON.stringify(ocId.errors));
-  const eff = normalizeManifest({ name: 'p', models: [{ id: 'cx', engine: 'codex', efforts: ['max'] }] });
-  assert.ok(eff.errors.some((e) => /unknown effort "max" — must be one of minimal \| low \| medium \| high/.test(e)), JSON.stringify(eff.errors));
+  const eff = normalizeManifest({ name: 'p', models: [{ id: 'cx', engine: 'codex', efforts: ['minimal'] }] });
+  assert.ok(eff.errors.some((e) => /unknown effort "minimal" — must be one of low \| medium \| high \| xhigh \| max \| ultra/.test(e)), JSON.stringify(eff.errors));
 });
 
 test('configSchema `advanced` folds an optional field: a boolean, no warning; the bundled chat plugins mark their tuning fields', () => {

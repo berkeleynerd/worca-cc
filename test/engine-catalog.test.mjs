@@ -87,7 +87,7 @@ test('a Codex custom model takes Codex efforts and refuses env, a non-Responses 
   assert.deepEqual(m, { id: 'cx-tune', label: 'cx-tune', efforts: ['low', 'high'], engine: 'codex' });
   assert.equal(engineOfModel('cx-tune'), 'codex', 'a custom entry names its engine');
   assert.equal((await listModels('')).find((r) => r.id === 'cx-tune').engine, 'codex');
-  await assert.rejects(() => addGlobalModel({ id: 'cx-2', engine: 'codex', efforts: ['max'] }), /unknown effort "max" — must be one of minimal \| low \| medium \| high/);
+  await assert.rejects(() => addGlobalModel({ id: 'cx-2', engine: 'codex', efforts: ['minimal'] }), /unknown effort "minimal" — must be one of low \| medium \| high \| xhigh \| max \| ultra/);
   await assert.rejects(() => addGlobalModel({ id: 'cx-3', engine: 'codex', env: { ANTHROPIC_BASE_URL: 'https://x' } }), /a codex model takes no env/);
   await assert.rejects(() => addGlobalModel({ id: 'cx-4', engine: 'codex', upstream: { provider: 'openai', api: 'openai-chat', model: 'gpt-x' } }), /a codex model speaks the Responses API only/);
   await assert.rejects(() => addGlobalModel({ id: 'cx-4', engine: 'codex', upstream: { provider: 'copilot', api: 'openai-responses', model: 'gpt-x' } }), /OpenAI-compatible endpoint only/);
@@ -98,7 +98,7 @@ test('a Codex custom model takes Codex efforts and refuses env, a non-Responses 
   await assert.rejects(() => addGlobalModel({ id: 'cx-5', engine: 'gpt' }), /engine must be one of claude \| codex \| copilot \| cursor \| gemini \| goose \| opencode \| qwen/);
   await assert.rejects(() => updateGlobalModel('cx-tune', { engine: 'claude' }), /engine cannot change/);
   await assert.rejects(() => updateGlobalModel('cx-tune', { env: { X: '1' } }), /a codex model takes no env/);
-  assert.deepEqual((await updateGlobalModel('cx-tune', { efforts: ['minimal'] })).efforts, ['minimal']);
+  assert.deepEqual((await updateGlobalModel('cx-tune', { efforts: ['ultra'] })).efforts, ['ultra']);
 });
 
 test('a Codex model takes an OpenAI-compatible Responses endpoint as its upstream', async () => {
@@ -128,7 +128,7 @@ test('a hand-edited Codex entry with env or upstream reads without them, loudly'
   const orig = console.warn;
   console.warn = (m) => warned.push(String(m));
   try {
-    assert.deepEqual(listGlobalModels(), [{ id: 'cx-hand', label: 'cx-hand', efforts: ['minimal'], engine: 'codex' }]);
+    assert.deepEqual(listGlobalModels(), [{ id: 'cx-hand', label: 'cx-hand', efforts: ['max'], engine: 'codex' }], 'minimal is no longer a Codex effort; max is');
   } finally { console.warn = orig; }
   assert.ok(warned.some((w) => /cx-hand.*ANTHROPIC_BASE_URL.*a codex model takes no routing env/.test(w)), warned.join('\n'));
   assert.ok(warned.some((w) => /cx-hand.*dropping upstream — a codex model speaks the Responses API only/.test(w)));

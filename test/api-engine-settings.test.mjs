@@ -58,9 +58,9 @@ test('a model of the other engine, or an effort the engine lacks, is refused nam
   // #555: the error names the visible label; `field` keeps the slot.
   assert.equal(wrong.body.error, '“Step models”: "claude-opus-5-5" runs on Claude — this slot picks a model Codex can run.');
   assert.equal(wrong.body.field, 'stepModels.codex.reviewer');
-  const effort = await post('/api/settings', { stepModels: { codex: { reviewer: { effort: 'max' } } } });
+  const effort = await post('/api/settings', { stepModels: { codex: { reviewer: { effort: 'minimal' } } } });
   assert.equal(effort.status, 400);
-  assert.equal(effort.body.error, '“Step models” must be one of minimal, low, medium, high.');
+  assert.equal(effort.body.error, '“Step models” must be one of low, medium, high, xhigh, max, ultra.');
   assert.equal(effort.body.field, 'stepModels.codex.reviewer.effort');
   const engine = await post('/api/settings', { stepModels: { gpt: {} } });
   assert.match(engine.body.error, /unknown engine "gpt"/);

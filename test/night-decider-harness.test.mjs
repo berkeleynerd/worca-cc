@@ -190,7 +190,7 @@ test('a Codex run: a Claude Decided by pick reads as stale, and the run\'s Codex
   assert.equal(seen[0].engine, 'codex');
 });
 
-test('a Codex run with no model: an effort codex\'s default model does not offer drops to medium, said once', async () => {
+test('a Codex run with no model keeps max on codex\'s default model; a Codex model that does not offer it drops to medium, said once', async () => {
   await setNightMode({ enabled: true, strategy: 'analysis', graceMinutes: 1, deciderEffort: 'max' });
   await setNightModeToggle('on');
   const clock = fakeClock();
@@ -200,8 +200,18 @@ test('a Codex run with no model: an effort codex\'s default model does not offer
   orch._log = (source, level, text) => logged.push({ source, level, text });
   await answerOne(orch, clock, 'cx3');
   assert.equal(seen[0].model, 'gpt-6.1-sol');
-  assert.equal(seen[0].effort, 'medium');
-  assert.equal(logged.filter((l) => /does not offer effort "max"/.test(l.text)).length, 1, JSON.stringify(logged));
+  assert.equal(seen[0].effort, 'max', 'gpt-6.1-sol takes max');
+  assert.equal(logged.filter((l) => /does not offer effort/.test(l.text)).length, 0, JSON.stringify(logged));
+  // gpt-5.5 stops at xhigh.
+  const clock2 = fakeClock();
+  const second = recordingRun();
+  const orch2 = createOrchestrator({ projectDir: '/tmp/night-dm-codex4', nightClock: clock2, nightRunClaude: second.run, claude: { model: 'gpt-5.5', engine: 'codex' } });
+  const logged2 = [];
+  orch2._log = (source, level, text) => logged2.push({ source, level, text });
+  await answerOne(orch2, clock2, 'cx4');
+  assert.equal(second.seen[0].model, 'gpt-5.5');
+  assert.equal(second.seen[0].effort, 'medium');
+  assert.equal(logged2.filter((l) => /"gpt-5.5" does not offer effort "max"/.test(l.text)).length, 1, JSON.stringify(logged2));
 });
 
 // ── Away mode cost visibility (T2): every review is booked as its own "away" share ─────────────

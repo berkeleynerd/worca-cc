@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineOfModel, catalogHasModel, modelForEngine, CODEX_BUILTIN_MODELS, codexModelLabel } from '../src/core/config.mjs';
 import { CODEX_PRICES } from '../src/core/engines/codex.mjs';
-import { CODEX_EFFORTS, EFFORTS, ALL_EFFORTS, effortsForEngine } from '../src/core/model-env.mjs';
+import { CODEX_EFFORTS, CODEX_MODEL_EFFORTS, EFFORTS, ALL_EFFORTS, effortsForEngine } from '../src/core/model-env.mjs';
 
 const dirs = [];
 const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, ALLOW: process.env.WORCA_TEST_ALLOW_HOME_FALLBACK };
@@ -30,17 +30,25 @@ const writeSettings = (obj) => {
 };
 
 test('efforts are per engine', () => {
-  assert.deepEqual(CODEX_EFFORTS, ['minimal', 'low', 'medium', 'high']);
+  assert.deepEqual(CODEX_EFFORTS, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
   assert.deepEqual(effortsForEngine('codex'), CODEX_EFFORTS);
   assert.deepEqual(effortsForEngine('claude'), EFFORTS);
   assert.deepEqual(effortsForEngine(undefined), EFFORTS, 'no engine = Claude');
   assert.deepEqual(effortsForEngine('copilot'), ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
-  assert.deepEqual(ALL_EFFORTS, ['medium', 'high', 'xhigh', 'max', 'minimal', 'low', 'none']);
+  assert.deepEqual(ALL_EFFORTS, ['medium', 'high', 'xhigh', 'max', 'low', 'ultra', 'none', 'minimal']);
 });
 
-test('the Codex built-ins are the CODEX_PRICES rows, in that order, with Codex efforts', () => {
-  assert.deepEqual(CODEX_BUILTIN_MODELS.map((m) => m.id), Object.keys(CODEX_PRICES));
-  assert.ok(CODEX_BUILTIN_MODELS.every((m) => JSON.stringify(m.efforts) === JSON.stringify(CODEX_EFFORTS)));
+test('the Codex built-ins are the models codex lists, then the older priced ones, each with its own efforts', () => {
+  assert.deepEqual(CODEX_BUILTIN_MODELS.map((m) => m.id),
+    ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.3-codex-spark']);
+  assert.deepEqual(new Set(CODEX_BUILTIN_MODELS.map((m) => m.id)), new Set([...Object.keys(CODEX_MODEL_EFFORTS), ...Object.keys(CODEX_PRICES)]), 'the union of both tables');
+  const effortsOf = (id) => CODEX_BUILTIN_MODELS.find((m) => m.id === id).efforts;
+  for (const id of ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.6-terra']) assert.deepEqual(effortsOf(id), ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], id);
+  for (const id of ['gpt-6-luna', 'gpt-5.6-luna']) assert.deepEqual(effortsOf(id), ['low', 'medium', 'high', 'xhigh', 'max'], id);
+  assert.deepEqual(effortsOf('gpt-5.5'), ['low', 'medium', 'high', 'xhigh']);
+  assert.deepEqual(effortsOf('gpt-5.3-codex-spark'), CODEX_EFFORTS, 'a priced model codex no longer lists keeps the engine list');
+  assert.equal(Object.hasOwn(CODEX_PRICES, 'gpt-6.1-terra'), false, 'gpt-6.1-terra has no list price yet');
+  assert.ok(CODEX_BUILTIN_MODELS.every((m) => m.efforts.every((e) => CODEX_EFFORTS.includes(e))));
   assert.equal(codexModelLabel('gpt-5.6-sol'), 'GPT-5.6 Sol');
   assert.equal(codexModelLabel('gpt-5.5'), 'GPT-5.5');
   assert.equal(codexModelLabel('gpt-5.3-codex-spark'), 'GPT-5.3 Codex Spark');

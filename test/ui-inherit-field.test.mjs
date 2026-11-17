@@ -10,8 +10,8 @@ import { NIGHT_DEFAULTS } from '../src/core/night/config.mjs';
 const doc = () => new JSDOM('<!doctype html><div id="root"></div>').window.document;
 const CATALOG = [
   { id: 'claude-opus-5-5', label: 'Opus 5.5', engine: 'claude', efforts: ['medium', 'high', 'xhigh', 'max'] },
-  { id: 'gpt-5.5', label: 'GPT-5.5', engine: 'codex', efforts: ['minimal', 'low', 'medium', 'high'] },
-  { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', engine: 'codex', efforts: ['minimal', 'low', 'medium', 'high'] },
+  { id: 'gpt-5.5', label: 'GPT-5.5', engine: 'codex', efforts: ['low', 'medium', 'high', 'xhigh'] },
+  { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', engine: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
 ];
 
 test('inheritText and inheritedOf name the layer an empty field falls back to', () => {
@@ -73,7 +73,7 @@ test('select field and model field: options, inheritance text, effort follows th
     inherited: { value: 'codex', source: 'user' }, options: [{ value: 'claude', label: 'Claude' }, { value: 'codex', label: 'Codex' }], format: (v) => ({ claude: 'Claude', codex: 'Codex' })[v] });
   assert.equal(eng.querySelector('.inherit-input option').textContent, 'Codex (your setting)');
   const m = renderInheritField(d, { id: 'models.codex.steps.planner', label: 'Plan', kind: 'model', level: 'project', engine: 'codex', catalog: CATALOG,
-    efforts: ['minimal', 'low', 'medium', 'high'], own: undefined, inherited: { value: { model: 'gpt-5.5', effort: 'low' }, source: 'user' } });
+    efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], own: undefined, inherited: { value: { model: 'gpt-5.5', effort: 'low' }, source: 'user' } });
   const sel = m.querySelector('.inherit-model');
   assert.deepEqual([...sel.options].map((o) => o.value), ['', 'gpt-5.5', 'gpt-5.6-sol'], 'only the engine\'s models');
   assert.equal(sel.options[0].textContent, 'GPT-5.5 (your setting)', 'the Model names the model only');
@@ -81,7 +81,7 @@ test('select field and model field: options, inheritance text, effort follows th
   sel.value = 'gpt-5.6-sol';
   sel.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
   const eff = m.querySelector('.inherit-effort');
-  assert.deepEqual([...eff.options].map((o) => o.value), ['', 'minimal', 'low', 'medium', 'high']);
+  assert.deepEqual([...eff.options].map((o) => o.value), ['', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
   eff.value = 'high';
   eff.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
   assert.deepEqual(readInheritField(m), { model: 'gpt-5.6-sol', effort: 'high' });

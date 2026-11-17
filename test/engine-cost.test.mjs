@@ -18,11 +18,15 @@ const dirs = [];
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
 test('every Codex built-in has live rates and a non-null estimate', () => {
-  for (const { id } of CODEX_BUILTIN_MODELS) {
+  for (const { id } of CODEX_BUILTIN_MODELS.filter((m) => m.id !== 'gpt-6.1-terra')) {
     const [input, output, cached = input / 10] = CODEX_PRICES[id];
     assert.deepEqual(liveCostRates(id), { input, output, cacheRead: cached, cacheWrite: input, cacheWrite1h: input }, id);
     assert.ok(Number.isFinite(estimateCodexCostUsd(id, { input: 1000, cached: 0, output: 100 })), id);
   }
+  // gpt-6.1-terra is a built-in with no list price yet: its cost reads as unknown, never as $0.
+  assert.ok(CODEX_BUILTIN_MODELS.some((m) => m.id === 'gpt-6.1-terra'));
+  assert.equal(liveCostRates('gpt-6.1-terra'), null);
+  assert.equal(estimateCodexCostUsd('gpt-6.1-terra', { input: 1000, cached: 0, output: 100 }), null);
   assert.equal(liveCostRates('gpt-5.2-codex'), null, 'an id no table knows still has no estimate');
 });
 

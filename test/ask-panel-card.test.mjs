@@ -492,7 +492,7 @@ test('ask-panel-card v2: with "Save as project defaults" on, Start writes every 
   ]);
 });
 
-const GPT = { id: 'gpt-5.5', label: 'GPT-5.5', engine: 'codex', efforts: ['minimal', 'low', 'medium', 'high'] };
+const GPT = { id: 'gpt-5.5', label: 'GPT-5.5', engine: 'codex', efforts: ['low', 'medium', 'high', 'xhigh'] };
 
 test('ask-panel-card v2: the lane follows the run engine — Codex models only on a Codex run, none on a Claude run', async () => {
   await checkRows([
@@ -503,7 +503,7 @@ test('ask-panel-card v2: the lane follows the run engine — Codex models only o
       assert.deepEqual([...plan.options].map((o) => o.value), ['', 'gpt-5.5']);
       assert.equal(lane.querySelector('.ask-rp-tile[data-node-id="n_impl"] .ask-rp-model').value, '', 'the workflow\'s Claude pick is skipped on Codex');
       assert.equal(lane.querySelector('.ask-rp-subagent'), null);
-      assert.deepEqual([...lane.querySelectorAll('.ask-rp-tile[data-node-id="n_plan"] .ask-rp-effbtn')].map((b) => b.textContent), ['minimal', 'low', 'medium', 'high']);
+      assert.deepEqual([...lane.querySelectorAll('.ask-rp-tile[data-node-id="n_plan"] .ask-rp-effbtn')].map((b) => b.textContent), ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
     } },
     { name: 'on an engine without effort levels (Cursor) the rows show no effort group', run: async () => {
       const ctx = await openWithCard(PROJECT_CARD, { runEngine: 'cursor' });

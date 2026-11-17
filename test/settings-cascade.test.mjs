@@ -82,14 +82,14 @@ test('an invalid layer is skipped once with a warning, never thrown (Review Focu
   const orig = console.warn;
   console.warn = (m) => warns.push(String(m));
   try {
-    writeUser({ runEngine: 'gpt', pipelineCostLimitUsd: -3, stepModels: { codex: { planner: { model: 'gpt-5.5', effort: 'max' } } },
+    writeUser({ runEngine: 'gpt', pipelineCostLimitUsd: -3, stepModels: { codex: { planner: { model: 'gpt-5.5', effort: 'minimal' } } },
       utilityModels: { codex: { title: { model: 'claude-opus-5-5' } } } });
     writeProjectRow({ extra: { settings: { runEngine: 'codex', askMaxTurns: 'lots' } } });
     assert.deepEqual(pick(resolveSetting('run.engine', { projectDir: dir })), { value: 'codex', source: 'project' });
     assert.deepEqual(pick(resolveSetting('pipelineCostLimitUsd', { projectDir: dir })), { value: null, source: 'default' });
     assert.deepEqual(pick(resolveSetting('pipelineCostLimitUsd', { projectDir: dir })), { value: null, source: 'default' });
     assert.deepEqual(pick(resolveSetting('askMaxTurns', { projectDir: dir })), { value: 400, source: 'default' });
-    assert.deepEqual(pick(resolveSetting('models.codex.steps.planner', { projectDir: dir })), { value: undefined, source: 'default' }, 'max is not a Codex effort');
+    assert.deepEqual(pick(resolveSetting('models.codex.steps.planner', { projectDir: dir })), { value: undefined, source: 'default' }, 'minimal is not a Codex effort');
     assert.deepEqual(pick(resolveSetting('models.codex.utility.title', { projectDir: dir })), { value: undefined, source: 'default' }, 'a known Claude model is invalid in a Codex slot');
     writeProjectRow({ extra: { settings: { runEngine: 'nope' } } });
     writeUser({ runEngine: 'codex' });

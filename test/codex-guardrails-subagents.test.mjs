@@ -220,7 +220,7 @@ test('runCodexProcess: a resume under a changed rule set finds the thread its fi
 test('codexInvestigatorRole: worca\'s prompt plus the memory block; a Codex model and effort kept, a Claude one dropped', () => {
   const r = codexInvestigatorRole({ agents: { 'worca-investigator': { description: 'D', prompt: 'Investigate.', model: 'gpt-5.6-luna', effort: 'max' } }, subagentSystemPrompt: '## Worca memory\nx' });
   assert.equal(r.description, 'D');
-  assert.equal(r.toml, 'developer_instructions = "Investigate.\\n\\n## Worca memory\\nx"\nmodel = "gpt-5.6-luna"\nmodel_reasoning_effort = "xhigh"\n');
+  assert.equal(r.toml, 'developer_instructions = "Investigate.\\n\\n## Worca memory\\nx"\nmodel = "gpt-5.6-luna"\nmodel_reasoning_effort = "max"\n', 'max stays max: Codex has its own');
   const c = codexInvestigatorRole({ agents: { x: { prompt: 'P', model: 'sonnet', effort: 'medium' } } });
   assert.equal(c.toml.includes('model = '), false, 'a Claude alias means nothing to codex: the role inherits the node\'s model');
   assert.match(codexInvestigatorRole({}).toml, /read-only investigator/);

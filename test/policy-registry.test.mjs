@@ -164,7 +164,7 @@ test('catalog models: a Codex entry keeps its engine, Codex efforts and a Respon
   const { doc, warnings } = normalizePolicyDoc({
     schema: 1,
     catalogs: { models: [
-      { id: 'acme-codex', engine: 'codex', efforts: ['low', 'max'] },
+      { id: 'acme-codex', engine: 'codex', efforts: ['low', 'minimal'] },
       { id: 'acme-codex-env', engine: 'codex', env: { ANTHROPIC_BASE_URL: 'https://x' } },
       { id: 'acme-codex-local', engine: 'codex', upstream: { provider: 'openai', api: 'openai-responses', model: 'qwen', baseUrl: 'http://gw.acme:8000/v1', apiKey: '${ACME_KEY}' } },
       { id: 'acme-codex-chat', engine: 'codex', upstream: { provider: 'openai', api: 'openai-chat', model: 'qwen' } },
@@ -175,7 +175,7 @@ test('catalog models: a Codex entry keeps its engine, Codex efforts and a Respon
   });
   assert.deepEqual(doc.catalogs.models, [
     { id: 'acme-codex', label: 'acme-codex', efforts: ['low'], engine: 'codex' },
-    { id: 'acme-codex-local', label: 'acme-codex-local', efforts: ['minimal', 'low', 'medium', 'high'], engine: 'codex',
+    { id: 'acme-codex-local', label: 'acme-codex-local', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], engine: 'codex',
       upstream: { provider: 'openai', api: 'openai-responses', model: 'qwen', baseUrl: 'http://gw.acme:8000/v1', apiKey: '${ACME_KEY}' } },
     { id: 'acme-claude', label: 'acme-claude', efforts: ['high'] },
   ]);

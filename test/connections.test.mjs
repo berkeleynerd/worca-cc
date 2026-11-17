@@ -63,13 +63,18 @@ test('labels and keys: whose allowance a model spends', () => {
 });
 
 test('efforts: a model on two harnesses keeps its own list; the other harness takes the nearest', () => {
-  assert.equal(effortOn('max', 'codex'), 'high');
-  assert.equal(effortOn('xhigh', 'codex'), 'high');
+  assert.equal(effortOn('max', 'codex'), 'max');
+  assert.equal(effortOn('xhigh', 'codex'), 'xhigh');
+  assert.equal(effortOn('minimal', 'codex'), 'low', 'Codex no longer takes minimal');
+  assert.equal(effortOn('ultra', 'codex'), 'ultra');
+  assert.equal(effortOn('ultra', 'claude'), 'max');
+  assert.equal(effortOn('low', 'claude'), 'medium');
   assert.equal(effortOn('minimal', 'claude'), 'medium');
   assert.equal(effortOn('medium', 'codex'), 'medium');
   assert.equal(effortOn('high', 'cursor'), null, 'Cursor takes none');
-  assert.deepEqual(effortsOn({ efforts: ['medium', 'high', 'xhigh', 'max'] }, 'codex'), ['medium', 'high']);
-  assert.deepEqual(effortsOn({ efforts: ['minimal', 'low', 'medium', 'high'] }, 'claude'), ['medium', 'high']);
+  assert.deepEqual(effortsOn({ efforts: ['medium', 'high', 'xhigh', 'max'] }, 'codex'), ['medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(effortsOn({ efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] }, 'claude'), ['medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(effortsOn({ efforts: ['low', 'medium', 'high', 'xhigh'] }, 'claude'), ['medium', 'high', 'xhigh']);
 });
 
 test('the editor words: a suggested id and what a connection runs on', () => {

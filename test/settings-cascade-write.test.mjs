@@ -55,7 +55,7 @@ test('strict on write: a bad key or value throws 400 naming it, and nothing is w
   bad({ askMaxTurns: 5, pipelineCostLimitUsd: -1 }, /^pipelineCostLimitUsd must be a positive number of USD$/);
   bad({ totalCostLimitUsd: 5 }, /unknown setting "totalCostLimitUsd"/);
   bad({ 'models.codex.workspaceScan': { model: 'gpt-5.5' } }, /models\.codex\.workspaceScan is set per user, not per project/);
-  bad({ 'models.codex.steps.planner': { model: 'gpt-5.5', effort: 'max' } }, /models\.codex\.steps\.planner\.effort must be one of minimal \| low \| medium \| high/);
+  bad({ 'models.codex.steps.planner': { model: 'gpt-5.5', effort: 'minimal' } }, /models\.codex\.steps\.planner\.effort must be one of low \| medium \| high \| xhigh \| max \| ultra/);
   bad({ 'nightMode.spendCapUsd': 3 }, /spendCapUsd is set per user/);
   bad({ askWeb: { enabled: 'yes', allowedDomains: [] } }, /^askWeb: askWeb\.enabled must be true or false$/);
   assert.throws(() => assertProjectSettingsPatch({ 'models.claude.steps.ghost': { model: 'x' } }, { roles: ['planner'] }), /unknown step "ghost"/);
