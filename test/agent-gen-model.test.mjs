@@ -11,10 +11,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { useTempHome } from './helpers/temp-home.mjs';
 import { checkRows } from './helpers/rows.mjs';
+import { ALL_EFFORTS } from '../src/core/model-env.mjs';
 
 useTempHome(after);   // the mock generations below finish ASYNC in-process
 
-let home, srv, base, runs;
+let home, srv, base, runs, serverMod;
 const prev = {};
 const JSONH = { 'Content-Type': 'application/json' };
 before(async () => {
@@ -25,6 +26,7 @@ before(async () => {
   process.env.WORCA_MOCK = '1';
   const mod = await import('../ui/server.mjs');       // imported ⇒ no port bind
   ({ runs } = mod);
+  serverMod = mod;
   srv = mod.server;
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${srv.address().port}`;
@@ -71,7 +73,9 @@ test('settings: agentGenModel round-trips through the API, validates BEFORE any 
     [{ model: 'gpt-5.5', effort: 'high' }, /"gpt-5\.5" runs on Codex\. This setting picks a model Claude Code can run\.$/],
     [{ model: 'claude-haiku-4-5', effort: 'max' }, /does not offer effort "max"/],
     [{ model: '', effort: 'high' }, /“Effort” needs a model/],
-    [{ model: 'claude-opus-5-5', effort: 'low' }, /“Effort” must be one of medium, high, xhigh, max/],
+    // `low` is an effort some harness lists (ALL_EFFORTS): the pair rule passes it, the model's own list refuses it.
+    [{ model: 'claude-opus-5-5', effort: 'low' }, /claude-opus-5-5 does not offer effort "low"/],
+    [{ model: 'claude-opus-5-5', effort: 'bogus' }, new RegExp(`“Effort” must be one of ${ALL_EFFORTS.join(', ')}`)],
     ['claude-opus-5-5', /must be \{ model, effort \}/],
   ]) {
     r = await post({ agentGenModel: bad });
@@ -122,7 +126,11 @@ test('assertAgentGenModelInput / setAgentGenModel / agentGenModel: the pair rule
       assert.throws(() => assertAgentGenModelInput('claude-opus-5-5', MODELS), /^Error: agentGenModel must be \{ model, effort \} or null$/);
       assert.throws(() => assertAgentGenModelInput({ effort: 'high' }, MODELS), /agentGenModel\.effort needs a model/);
       assert.throws(() => assertAgentGenModelInput({ model: 42 }, MODELS), /agentGenModel\.model must be a catalog model id/);
-      assert.throws(() => assertAgentGenModelInput({ model: 'x', effort: 'low' }), /agentGenModel\.effort must be one of medium \| high \| xhigh \| max/);
+      // Every harness's efforts pass the pair rule (ALL_EFFORTS); the model's own list decides when a catalog is given.
+      assert.deepEqual(ALL_EFFORTS, ['medium', 'high', 'xhigh', 'max', 'low', 'ultra', 'none', 'minimal']);
+      assert.deepEqual(assertAgentGenModelInput({ model: 'x', effort: 'ultra' }), { model: 'x', effort: 'ultra' });
+      assert.throws(() => assertAgentGenModelInput({ model: 'x', effort: 'bogus' }), /agentGenModel\.effort must be one of medium \| high \| xhigh \| max \| low \| ultra \| none \| minimal$/);
+      assert.throws(() => assertAgentGenModelInput({ model: 'claude-opus-5-5', effort: 'low' }, MODELS), /claude-opus-5-5 does not offer effort "low"/);
       assert.throws(() => assertAgentGenModelInput({ model: 'nope' }, MODELS), /unknown model "nope"/);
       assert.throws(() => assertAgentGenModelInput({ model: 'claude-haiku-4-5', effort: 'max' }, MODELS), /claude-haiku-4-5 does not offer effort "max"/);
     } },
@@ -170,25 +178,35 @@ async function generate() {
   return entry;
 }
 
-test('POST /api/agents/generate runs on the setting read at click time; unset and stale run on the CLI default', async () => {
+test('POST /api/agents/generate runs on the setting read at click time, on the harness of its model; unset and stale run on the default harness\'s own default', async () => {
   const { mockSpawnLog } = await import('../src/core/claude-runner.mjs');
   const warn = console.warn;
   const warnings = [];
   console.warn = (...a) => { warnings.push(a.join(' ')); };
   try {
     let entry = await generate();
-    assert.equal(entry.orch.claude.model, undefined, 'unset: no --model, the CLI default');
+    assert.equal(entry.orch.claude.model, undefined, 'unset: no model named, the harness\'s own default');
     assert.equal(entry.orch.claude.effort, undefined);
+    assert.equal(entry.orch.claude.engine, 'codex', 'unset: the default harness generates');
+    assert.deepEqual(mockSpawnLog.at(-1), { engine: 'codex', sandbox: null, model: null });
+    assert.equal((await serverMod.agentGenTarget()).engine, 'codex');
     await post({ agentGenModel: { model: 'claude-opus-5-5', effort: 'xhigh' } });
     entry = await generate();
     assert.deepEqual([entry.orch.claude.model, entry.orch.claude.effort], ['claude-opus-5-5', 'xhigh'], 'saved after the server started: read per Generate');
-    assert.equal(mockSpawnLog.at(-1).model, 'claude-opus-5-5', 'the model reached runClaude');
+    assert.equal(entry.orch.claude.engine, undefined, 'a Claude model generates on the claude CLI');
+    assert.deepEqual(mockSpawnLog.at(-1), { engine: 'claude', sandbox: null, model: 'claude-opus-5-5' }, 'the model reached runClaude');
+    assert.deepEqual(await serverMod.agentGenTarget(), { pick: { model: 'claude-opus-5-5', effort: 'xhigh', source: 'settings', stale: null }, engine: null });
     await post({ agentGenModel: { model: 'claude-haiku-4-5' } });
     entry = await generate();
     assert.deepEqual([entry.orch.claude.model, entry.orch.claude.effort], ['claude-haiku-4-5', undefined], 'no effort: the model\'s default effort');
+    // A Codex model (the settings API takes Claude models here; a hand edit or a Codex role names one): codex runs it.
+    await writeStored({ model: 'gpt-6-astra', effort: 'ultra' });
+    entry = await generate();
+    assert.deepEqual([entry.orch.claude.model, entry.orch.claude.effort, entry.orch.claude.engine], ['gpt-6-astra', 'ultra', 'codex']);
+    assert.deepEqual(mockSpawnLog.at(-1), { engine: 'codex', sandbox: null, model: 'gpt-6-astra' });
     await writeStored({ model: 'gone-model', effort: 'high' });
     entry = await generate();
-    assert.deepEqual([entry.orch.claude.model, entry.orch.claude.effort], [undefined, undefined], 'stale: the CLI default');
+    assert.deepEqual([entry.orch.claude.model, entry.orch.claude.effort, entry.orch.claude.engine], [undefined, undefined, 'codex'], 'stale: the default harness\'s own default');
     assert.ok(warnings.some((w) => /^\[worca\] agentGenModel "gone-model" is no longer in the catalog — agent generation uses the CLI default$/.test(w)), warnings.join('\n'));
   } finally {
     console.warn = warn;

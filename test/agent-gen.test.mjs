@@ -140,6 +140,20 @@ test('the one claude call carries the configured model + effort; with none it na
         assert.equal(seen.at(-1).model, 'claude-opus-5-5');
         assert.equal(seen.at(-1).effort, 'xhigh');
       } },
+      { name: 'another harness (engine codex): the call names the engine and carries no claude CLI routing env or bin; Claude keeps them', run: async () => {
+        await createAgentGen({ name: 'X', purpose: 'p', claude: { model: 'gpt-6-astra', effort: 'high', engine: 'codex', bin: '/usr/bin/claude' } }).run();
+        const codex = seen.at(-1);
+        assert.deepEqual([codex.engine, codex.model, codex.effort], ['codex', 'gpt-6-astra', 'high']);
+        assert.equal('modelEnv' in codex, false);
+        assert.equal('bin' in codex, false, 'the claude binary is never handed to another harness');
+        assert.equal(codex.cwd.length > 0 && codex.permissionMode === 'acceptEdits', true);
+        for (const claude of [{ model: 'claude-opus-5-5', bin: '/usr/bin/claude' }, { model: 'claude-opus-5-5', engine: 'claude', bin: '/usr/bin/claude' }]) {
+          await createAgentGen({ name: 'X', purpose: 'p', claude }).run();
+          assert.equal('engine' in seen.at(-1), false);
+          assert.equal('modelEnv' in seen.at(-1), true);
+          assert.equal(seen.at(-1).bin, '/usr/bin/claude');
+        }
+      } },
       { name: 'unset: model and effort stay undefined (the CLI default, as before)', run: async () => {
         await createAgentGen({ name: 'X', purpose: 'p', claude: {} }).run();
         assert.equal(seen.at(-1).model, undefined);

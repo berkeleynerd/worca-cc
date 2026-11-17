@@ -59,6 +59,19 @@ test('assertWorkspaceScanInput: null clears; a pick comes back in catalog casing
   assert.throws(() => assertWorkspaceScanInput({ ...PICK, scanModel: 'local-llm' }, CATALOG), /does not offer effort "high"/);
 });
 
+test('a Codex scan model takes its own efforts (low, ultra): the pair rule passes every harness\'s efforts, the model\'s list decides', () => {
+  const catalog = [...CATALOG, { id: 'gpt-6-luna', engine: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] }, { id: 'gpt-6-astra', engine: 'codex', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] }];
+  const quick = { scanModel: 'gpt-6-luna', scanEffort: 'low', agentModel: 'sonnet', agentEffort: 'medium' };
+  assert.deepEqual(assertWorkspaceScanInput(quick, catalog), quick);
+  assert.deepEqual(assertWorkspaceScanInput({ ...quick, scanModel: 'gpt-6-astra', scanEffort: 'ultra' }, catalog), { ...quick, scanModel: 'gpt-6-astra', scanEffort: 'ultra' });
+  assert.throws(() => assertWorkspaceScanInput({ ...quick, scanEffort: 'ultra' }, catalog), /gpt-6-luna does not offer effort "ultra"/);
+  assert.throws(() => assertWorkspaceScanInput({ ...PICK, scanEffort: 'low' }, CATALOG), /claude-opus-5-5 does not offer effort "low"/);
+  // The investigator alias is a Claude Code notion: its effort list stays Claude's.
+  assert.throws(() => assertWorkspaceScanInput({ ...quick, agentEffort: 'low' }, catalog), /agentEffort must be one of medium \| high \| xhigh \| max$/);
+  // A stored Codex pick at its low effort is used as stored, never degraded to the Claude defaults.
+  assert.deepEqual(resolveScanModels({ stored: quick, models: catalog }), { ...quick, source: 'settings', warning: null });
+});
+
 test('set / read round trip in settings.json; null clears; the key is a POST key', async () => {
   assert.ok(SETTINGS_POST_KEYS.includes('workspaceScan'));
   assert.equal(workspaceScanModels(), null, 'unset');
