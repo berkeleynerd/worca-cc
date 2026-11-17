@@ -181,7 +181,7 @@ const WHY = {
   untested: 'not tested — run Test so its tool names can be checked for this model',
   'env-collision': 'its secret env name collides with another copy\'s',
   cap: 'over the MCP server limit for one spawn',
-  'engine-remote': "a remote server, and this chat's engine attaches local (stdio) servers only",
+  'engine-remote': "a remote server of a kind this chat's engine does not attach (Codex takes streamable HTTP servers, not SSE)",
   'engine-name': "a name this chat's engine cannot use (only letters, digits, _ and -, at most 64 characters)",
   'engine-incomplete': 'no command and no url',
 };
