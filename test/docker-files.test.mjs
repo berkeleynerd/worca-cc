@@ -26,6 +26,10 @@ test('Dockerfile and .dockerignore: non-root, pinned CLI, tini, healthcheck, tar
       assert.match(d, /DISABLE_AUTOUPDATER=1/, 'the image is immutable: no self-update');
       assert.match(d, /claude-code@\$\{CLAUDE_CODE_VERSION\}/, 'Claude Code is installed at the pinned version');
       assert.match(d, /test -n "\$\{CLAUDE_CODE_VERSION\}"/, 'a missing pin fails the build instead of installing latest');
+      // Codex is the default harness: the image carries it too, at a pinned version named in a label.
+      assert.match(d, /^ARG CODEX_VERSION=\d+\.\d+\.\d+$/m, 'the Codex pin has a default: an exact version');
+      assert.match(d, /^RUN npm install -g "@openai\/codex@\$\{CODEX_VERSION\}" \\$/m, 'Codex is installed at the pinned version');
+      assert.match(d, /dev\.worca\.codex\.version="\$\{CODEX_VERSION\}"/, 'the Codex pin is a label');
       // The packed tarball, never COPY of the source; `npm ci` in the unpacked package, because a
       // global install of a local tarball ignores its npm-shrinkwrap.json (G20).
       assert.match(d, /tar -xzf \/tmp\/worca\.tgz -C "\$\{app\}" --strip-components=1/, 'installs the packed tarball, never COPY of the source');

@@ -182,6 +182,11 @@ test('HELP (--help and bare `worca help`) documents the bare-positional prompt f
       assert.equal(help.status, 0);
       assert.match(help.stdout, /worca "<task>"/);
     } },
+    { name: 'HELP names Codex as the default harness, Claude unmarked, the rest in beta; --model is the harness\'s model', run: () => {
+      assert.match(help.stdout, /^ {2}--engine <name> +Agent harness for the pipeline's agent nodes: codex \(default\) \| claude \| copilot \(beta\) \| cursor \(beta\) \| gemini \(beta\) \| goose \(beta\) \| opencode \(beta\) \| qwen \(beta\)$/m);
+      assert.match(help.stdout, /^ {2}--model <m> +Model id of the run's harness$/m);
+      assert.doesNotMatch(help.stdout, /codex \(beta\)|claude \(default\)/);
+    } },
     { name: '--version: HELP documents the flag and the bare word', run: () => {
       assert.equal(help.status, 0);
       assert.match(help.stdout, /-v, -V, --version/);

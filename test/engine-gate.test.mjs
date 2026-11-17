@@ -112,6 +112,12 @@ test('codex starts on the built-in Normal set without the consent and the audit 
   o.guardrailsId = 'normal';
   const lines = o._engineGate();
   assert.ok(lines.some((l) => l.startsWith('engine codex: guardrail set "normal": rules NOT enforced on codex') && l.includes('Read(.env*), Edit(.env*), Read(*.pem) (+28 more)')), lines.join('\n'));
+  // No consent was given, so the line does not name the flag: it says the Normal set runs on codex without those rules.
+  assert.ok(lines.some((l) => l.startsWith('engine codex: guardrail set "normal": rules NOT enforced on codex (the Normal set runs on codex without them): Read(.env*)')), lines.join('\n'));
+  const consented = withNodes(orch({ engine: 'codex', allowUnguardedEngine: true }), {});
+  consented.guardrailPermissionRules = rules;
+  consented.guardrailsId = 'normal';
+  assert.ok(consented._engineGate().some((l) => l.startsWith('engine codex: guardrail set "normal": rules NOT enforced on codex (--allow-unguarded-engine): Read(.env*)')), 'with the consent, the flag is what the line names');
   assert.ok(lines.some((l) => l.startsWith(`engine codex: deny rules held on codex only in part, as command rules — ${REACH}`) && l.includes('Bash(git push)')), lines.join('\n'));
   // A custom set, a team policy set and Secure++ carry no such pass, even with Normal's exact rules.
   for (const id of ['gr_copy_of_normal', 'gp:team-normal', 'secure', 'custom']) {
