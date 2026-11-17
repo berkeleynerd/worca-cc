@@ -48,7 +48,7 @@ import { runExecution, allocateOutputs, allocateVerdict, readDecomposition, deco
 import { serialQueue, measureCodeCursor, collectStepEvidence } from './graph/human-evidence.mjs';
 import { estimateStepHours, resolveConstants, sumStepHours } from '../shared/human-estimate.mjs';
 import { diffNumstat } from './git-info.mjs';
-import { humanEstimateOverrides } from './settings.mjs';
+import { humanEstimateOverrides, memoryDefragModel } from './settings.mjs';
 import { renderPromptArtifact } from './phases.mjs';
 import { listModels, engineOfModel, modelHasBaseUrlRouting, resolveRunConfig, stepSlotDefaults, slotSourceLines } from './config.mjs';
 import { defragSlotPair, utilityModelFor } from './settings-cascade.mjs';
@@ -248,13 +248,16 @@ export class GraphOrchestrator extends RunHarness {
     const engine = this.claude.engine || 'claude';
     const explicit = { model: this.claude.model, effort: this.claude.effort };
     // Model roles (D3): an unset defragment slot takes the quick role.
-    const stored = withRole(defragSlotPair(engine, this._settingsScope()), engine, 'memoryDefrag');
+    // Settings › Memory's own pick, when it is a model of this harness (the server starts the run on its model's harness).
+    const own = engine !== 'claude' ? memoryDefragModel() : null;
+    const ownHere = !!(own && own.model && engineOfModel(own.model, { projectDir: this.projectDir }) === engine);
+    const stored = withRole(ownHere ? own : defragSlotPair(engine, this._settingsScope()), engine, 'memoryDefrag');
     // The catalog read only when the setting is the one that decides.
     const models = !(typeof explicit.model === 'string' && explicit.model.trim()) && stored.model
       ? (await listModels(this.projectDir)).filter((m) => runsOn(m, engine)) : [];
     const r = resolveDefragModel({ explicit, stored, models });
     if (!r.model) return { pair: null, warning: r.warning };
-    this._log('orchestrator', 'info', `Memory defragment model: ${r.model}${r.effort ? ` · ${r.effort}` : ''} (${r.source === 'explicit' ? 'named at start' : (engine === 'claude' ? 'Settings › Memory' : 'Models › Codex')})`);
+    this._log('orchestrator', 'info', `Memory defragment model: ${r.model}${r.effort ? ` · ${r.effort}` : ''} (${r.source === 'explicit' ? 'named at start' : (engine === 'claude' || ownHere ? 'Settings › Memory' : 'Models › Codex')})`);
     return { pair: { model: r.model, effort: r.effort }, warning: r.warning };
   }
 
