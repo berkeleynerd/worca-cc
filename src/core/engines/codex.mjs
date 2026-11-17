@@ -320,11 +320,19 @@ const ENV_REF_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
 /** The servers of an --mcp-config document that codex cannot attach, each with its reason (capabilities.mjs
  *  describeUnattachableMcp): `remote` (codex takes stdio servers only), `name` (outside MCP_NAME_RE, which codex's
  *  `-c mcp_servers.<name>` key needs) or `incomplete` (no command and no url). */
+/** Whether `srv` is a remote server codex can attach: an http(s) url whose transport is not SSE. */
+export function codexRemoteMcp(srv) {
+  if (!srv || typeof srv !== 'object' || typeof srv.url !== 'string' || !/^https?:\/\//i.test(srv.url.trim())) return false;
+  return String(srv.type || srv.transport || 'http').toLowerCase() !== 'sse';
+}
+
 export function codexMcpProblems(servers) {
   const out = [];
   for (const [name, srv] of Object.entries(servers && typeof servers === 'object' ? servers : {})) {
     const stdio = !!srv && typeof srv.command === 'string';
-    const reason = stdio ? (MCP_NAME_RE.test(name) ? null : 'name') : srv && typeof srv.url === 'string' ? 'remote' : 'incomplete';
+    // codex attaches a streamable HTTP server (mcp_servers.<name>.url); an SSE-only one it cannot.
+    const http = !stdio && codexRemoteMcp(srv);
+    const reason = stdio || http ? (MCP_NAME_RE.test(name) ? null : 'name') : srv && typeof srv.url === 'string' ? 'remote' : 'incomplete';
     if (reason) out.push({ name, reason });
   }
   return out;
@@ -355,6 +363,9 @@ export function expandMcpRefs(servers, from = {}) {
     if (typeof srv.command === 'string') next.command = fill(srv.command, { argv: true });
     if (Array.isArray(srv.args)) next.args = srv.args.map((a) => fill(a, { argv: true }));
     if (srv.env && typeof srv.env === 'object') next.env = Object.fromEntries(Object.entries(srv.env).map(([k, v]) => [k, fill(v)]));
+    // A remote server: the url rides argv (secret references stay as written), header values the spawn env only.
+    if (typeof srv.url === 'string') next.url = fill(srv.url, { argv: true });
+    if (srv.headers && typeof srv.headers === 'object') next.headers = Object.fromEntries(Object.entries(srv.headers).map(([k, v]) => [k, fill(v)]));
     out[name] = next;
   }
   return out;
@@ -374,9 +385,30 @@ export function codexMcpOverrides(servers, { passEnv = [], disabledTools = {} } 
   const all = Object.entries(servers && typeof servers === 'object' ? servers : {});
   // Every server's env shares the ONE codex process env: a name another server declares is never passed on here.
   const declared = new Set(all.flatMap(([, srv]) => Object.keys(srv?.env && typeof srv.env === 'object' ? srv.env : {})));
+  let remoteSeq = 0;
   for (const [name, srv] of all) {
-    if (!MCP_NAME_RE.test(name) || !srv || typeof srv.command !== 'string') continue;   // stdio servers only
+    if (!MCP_NAME_RE.test(name) || !srv) continue;
     const key = `mcp_servers.${name}`;
+    if (typeof srv.command !== 'string') {
+      if (!codexRemoteMcp(srv)) continue;   // an SSE-only or incomplete server: codexMcpProblems names it
+      // A streamable HTTP server. Header VALUES never ride argv: each goes to the codex env under a name of worca's
+      // own, a `Bearer` Authorization as codex's bearer_token_env_var and any other header through env_http_headers.
+      args.push('-c', `${key}.url=${tomlString(srv.url.trim())}`);
+      const fromEnv = [];
+      for (const [h, v] of Object.entries(srv.headers && typeof srv.headers === 'object' ? srv.headers : {})) {
+        if (typeof v !== 'string' || !/^[A-Za-z0-9-]+$/.test(h)) continue;
+        const slot = `WORCA_MCP_HTTP_${remoteSeq++}`;
+        const bearer = h.toLowerCase() === 'authorization' ? /^Bearer\s+(.+)$/i.exec(v.trim()) : null;
+        if (bearer) { env[slot] = bearer[1]; args.push('-c', `${key}.bearer_token_env_var=${tomlString(slot)}`); }
+        else { env[slot] = v; fromEnv.push(`${tomlString(h)}=${tomlString(slot)}`); }
+      }
+      if (fromEnv.length) args.push('-c', `${key}.env_http_headers={${fromEnv.join(',')}}`);
+      const offRemote = Object.hasOwn(disabledTools, name) && Array.isArray(disabledTools[name]) ? disabledTools[name] : [];
+      if (offRemote.length) args.push('-c', `${key}.disabled_tools=[${offRemote.map(tomlString).join(',')}]`);
+      args.push('-c', `${key}.required=true`, '-c', `${key}.startup_timeout_sec=30`,
+        '-c', `${key}.tool_timeout_sec=${CODEX_MCP_TOOL_TIMEOUT_SEC}`, '-c', `${key}.default_tools_approval_mode="approve"`);
+      continue;
+    }
     args.push('-c', `${key}.command=${tomlString(srv.command)}`);
     args.push('-c', `${key}.args=[${(Array.isArray(srv.args) ? srv.args : []).map((a) => tomlString(String(a))).join(',')}]`);
     const names = [];

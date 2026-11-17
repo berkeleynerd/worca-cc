@@ -11,7 +11,7 @@ export const CAPABILITY_KEYS = Object.freeze([
 /** Why an engine cannot attach an MCP server, as an adapter's `unattachableMcp` gives it (engines/index.mjs). */
 export const MCP_NAME_RULE = 'only letters, digits, _ and -, at most 64 characters';
 const MCP_REASON_ORDER = ['remote', 'name', 'incomplete'];
-const mcpReasonText = (reason, engine) => (reason === 'remote' ? `remote, and ${engine} attaches stdio servers only`
+const mcpReasonText = (reason, engine) => (reason === 'remote' ? (engine === 'codex' ? 'remote over SSE, and codex attaches stdio and streamable HTTP servers only' : `remote, and ${engine} attaches stdio servers only`)
   : reason === 'name' ? `a name ${engine} cannot use (${MCP_NAME_RULE})` : 'no command and no url');
 
 /** `{name, reason}` entries from an adapter's `unattachableMcp`, grouped by reason in words:
