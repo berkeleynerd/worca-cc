@@ -4,6 +4,12 @@
 import { writeFileSync, chmodSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+// A spawn carries the user's own model provider from $CODEX_HOME/config.toml as `-c` overrides
+// (src/core/engines/codex-user-provider.mjs). A test that spawns this stand-in must see the same argv and env on
+// every machine, so the developer's real config stays out unless the test asks for it
+// (test/codex-user-provider.test.mjs sets a temp CODEX_HOME and clears this).
+process.env.WORCA_CODEX_USER_PROVIDER ??= '0';
+
 /** The JSONL lines of one successful codex turn whose reply is `text`. */
 export function codexReplyLines(text) {
   return [
