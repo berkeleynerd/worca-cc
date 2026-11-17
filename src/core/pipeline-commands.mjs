@@ -20,7 +20,7 @@ import { getDb } from './db.mjs';
 
 /** The actions a command may carry today. `answer` joins here when question
  *  publication (its own issue) gives it something to carry in `payload`. */
-export const PIPELINE_COMMAND_ACTIONS = ['stop', 'pause'];
+export const PIPELINE_COMMAND_ACTIONS = ['stop', 'pause', 'approve'];
 
 /** How often an OWNING harness polls its control slot. Deliberately NOT the
  *  ownership heartbeat's cadence — HEARTBEAT_INTERVAL_MS is 30s, right for

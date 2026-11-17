@@ -215,6 +215,35 @@ async function controlRun(argv, action, { out, c, fail }) {
   return 0;
 }
 
+/** `worca approve <id>`: approve the approval gate a live run is waiting at. Written to the same control mailbox
+ *  as stop and pause, so it reaches the run whichever process owns it. @returns {Promise<number>} exit code */
+export async function cmdApprove(rest, { out, c, fail }) {
+  if (rest[0] === 'help' || rest[0] === '--help' || rest[0] === '-h') {
+    process.stdout.write('worca approve <id>   Approve the step a live run is holding for approval (any unique prefix).\n'
+      + 'To refuse it instead: worca stop <id>. A paused run is answered by resuming it: worca resume <id>.\n');
+    return 0;
+  }
+  const ref = rest.find((a) => !a.startsWith('-'));
+  if (!ref) fail('a run id is required (see: worca runs list)');
+  const id = resolveRunRef(ref, fail);
+  const row = getDb().prepare('SELECT id, title, status, owner_pid, owner_host, heartbeat_at, updated_at, started_at FROM pipelines WHERE id = ?').get(id);
+  if (!row) fail(`no run matches "${ref}" (see: worca runs list)`);
+  if (row.status !== 'running') {
+    return refusal(`run ${row.id} is "${row.status}", not live${row.status === 'paused' || row.status === 'interrupted' ? ` — resume it in a terminal to answer: worca resume ${row.id}` : ''}`);
+  }
+  if (isDeadOwner(row)) return refusal(`no live owner process for run ${row.id} — resume it with: worca resume ${row.id}`);
+  const { id: commandId } = enqueuePipelineCommand(row.id, 'approve', { by: 'local' });
+  const deadline = Date.now() + confirmMs();
+  let consumed = false;
+  while (Date.now() < deadline && !consumed) {
+    await sleep(300);
+    consumed = Boolean(getDb().prepare('SELECT consumed_at FROM pipeline_commands WHERE id = ?').get(commandId)?.consumed_at);
+  }
+  out(consumed ? `${c('green', 'Approval sent to')} ${c('bold', row.title || row.id)} ${c('gray', '— if no approval was waiting, the run ignored it (worca logs ' + row.id + ')')}`
+    : c('gray', `Approve command enqueued — the run has not picked it up yet (check: worca runs ${row.id}).`));
+  return 0;
+}
+
 /**
  * `worca stop|pause` — dispatch. The entry point routes only `stop` and `pause`
  * here and passes the args after the verb separately (the same way cmdRuns

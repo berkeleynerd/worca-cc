@@ -50,7 +50,7 @@ import { inheritedTagsAtCreation } from '../core/scheduler.mjs';
 import { cmdRuns } from './runs.mjs';
 import { cmdLogs } from './logs.mjs';
 import { cmdSessions } from './sessions.mjs';
-import { cmdControl } from './control.mjs';
+import { cmdControl, cmdApprove } from './control.mjs';
 import { cmdModels } from './models.mjs';
 import { cmdContainer } from './container.mjs';
 import { cmdExtension } from './extension.mjs';
@@ -329,6 +329,7 @@ Subcommands:
   sessions <id> [--json]      A run's sessions: host, turns, the cost split and its reconcile. See: worca sessions help
   stop <id>                   Stop a live or paused run (any unique prefix). See: worca stop help
   pause <id>                  Gracefully pause a live run; resume with: worca resume <id>
+  approve <id>                Approve the step a live run is holding for your approval (to refuse: worca stop <id>)
   doctor                      Reconcile crashed runs, sweep leftover run roots, check node-pty's spawn-helper and the terminal shell.
   plugin <cmd> [...]          Manage plugins: add|install|list|update|remove|purge|enable|
                               disable|doctor|link|reimport|init|validate|exec. See: worca plugin help
@@ -746,6 +747,16 @@ async function attachAndDrive(orch, flags, start) {
       });
       return;
     }
+    if (kind === 'approval' && (flags.auto || !rl)) {
+      // The approval gate needs a person: --yes never answers it. Pause, so the hold stays in the resume point;
+      // approve in the worca app, with `worca approve <id>` on a server run, or by resuming in a terminal.
+      out(c('yellow', `${(questions && questions[0]?.question) || 'A step is waiting for approval.'} Pausing the run: resume it in a terminal (worca resume ${orch.pipeline?.id || '<id>'}) to answer.`));
+      queueMicrotask(() => {
+        if (orch.pauseRequested || !orch.state || orch.state.status !== 'running') return;
+        orch.pause();
+      });
+      return;
+    }
     if (flags.auto || !rl) return; // auto mode resolves internally
     answering = true;
     const ctrl = new AbortController();
@@ -769,6 +780,10 @@ async function attachAndDrive(orch, flags, start) {
       } else if (kind === 'workflow') {
         const answer = await askWorkflow(rl, payload.workflow);
         orch.answer(id, answer);
+      } else if (kind === 'approval') {
+        out(c('yellow', c('bold', 'Approval needed:')));
+        const payload = await askClarify(rl, questions || []);
+        orch.answer(id, payload);
       } else if (kind === 'questions') {
         out(c('yellow', c('bold', `${agent || 'Agent'} has questions:`)));
         const payload = await askClarify(rl, questions || []);
@@ -3545,7 +3560,7 @@ async function resolveTeamNote(team, { key, project, name, a }) {
 
 // ── main ──────────────────────────────────────────────────────────────────────────
 
-const SUBCOMMANDS = new Set(['add', 'list', 'remove', 'resume', 'run', 'runs', 'logs', 'stop', 'pause', 'doctor', 'plugin', 'marketplace', 'config', 'flags', 'ui', 'workflow', 'metrics', 'script', 'policy', 'schedule', 'models', 'container', 'broker', 'extension', 'proxy', 'memory', 'setup', 'sessions']);
+const SUBCOMMANDS = new Set(['add', 'list', 'remove', 'resume', 'run', 'runs', 'logs', 'stop', 'pause', 'approve', 'doctor', 'plugin', 'marketplace', 'config', 'flags', 'ui', 'workflow', 'metrics', 'script', 'policy', 'schedule', 'models', 'container', 'broker', 'extension', 'proxy', 'memory', 'setup', 'sessions']);
 
 /** Levenshtein distance, two-row. Only ever called on short argv tokens. */
 function editDistance(a, b) {
@@ -3670,6 +3685,7 @@ async function main() {
     if (sub === 'logs') return cmdLogs(rest, { out, c, fail });
     if (sub === 'sessions') return flushed(cmdSessions(rest, { out, c, fail }));   // --json can pass 64 KiB on a pipe
     if (sub === 'stop' || sub === 'pause') return cmdControl(sub, rest, { out, c, fail });
+    if (sub === 'approve') return cmdApprove(rest, { out, c, fail });
     if (sub === 'doctor') return cmdDoctor();
     if (sub === 'plugin') return cmdPlugin(rest);
     if (sub === 'marketplace') return cmdMarketplace(rest);
