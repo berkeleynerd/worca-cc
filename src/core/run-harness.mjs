@@ -3433,8 +3433,13 @@ export class RunHarness extends EventEmitter {
     if (caps.permissionRules === false && hasPermissionRules(projectRules) && !allowed) {
       return `the project's .claude/settings.json denies ${ruleList(projectRules)}, which this engine cannot enforce — pass --allow-unguarded-engine to run it without them`;
     }
+    // Codex is this fork's default harness, and the built-in Normal set is the default set: a plain run must start.
+    // Codex holds Normal's command rules in part and none of its path rules; its own sandbox still confines writes to
+    // the run's folders. So on Codex the Normal set starts without the consent, and the run log names every rule it
+    // does not hold (_engineChecks). A custom or Secure++ set, a team set and the project's own rules still need it.
+    const setAllowed = allowed || (name === 'codex' && guardrailsId === 'normal');
     const gSkip = caps.permissionRules === false ? [] : this._engineUnenforced(rules);
-    if (gSkip.length && !allowed) {
+    if (gSkip.length && !setAllowed) {
       return `guardrail set "${guardrailsId}" has permission rules this engine cannot enforce (${ruleNames(gSkip)}) — ${permissive}, or pass --allow-unguarded-engine to run it without them`;
     }
     const pSkip = caps.permissionRules === false ? [] : this._engineUnenforced(projectRules);
@@ -3444,7 +3449,7 @@ export class RunHarness extends EventEmitter {
     // Some rules hold only in part (the adapter's ruleKind/ruleReach; codex: CODEX_COMMAND_RULE_REACH): running on them is
     // a choice, like running without a rule.
     const gPart = caps.permissionRules === false ? [] : this._enginePartial(rules);
-    if (gPart.length && !allowed) {
+    if (gPart.length && !setAllowed) {
       return `guardrail set "${guardrailsId}" has ${this._enginePartialKind()} this engine holds only in part (${ruleNames(gPart)}): ${this._engineRuleReach()} — ${permissive}, or pass --allow-unguarded-engine to run it with them as a partial guard`;
     }
     const pPart = caps.permissionRules === false ? [] : this._enginePartial(projectRules);
