@@ -3,7 +3,7 @@
 // through the classifier's repo look (D7), then rounds that are single tool-less model calls. One job
 // per feature at a time; a job never throws out — a failure becomes an `error` turn and the feature goes
 // back to the product owner. Spend is checked before every call and booked after it (D9).
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, isAbsolute, dirname } from 'node:path';
 import { runClaude, mockEnabled } from '../claude-runner.mjs';
 import { normalizingOnEvent } from '../engines/claude-events.mjs';
@@ -43,9 +43,15 @@ const DEFAULTS = Object.freeze({
   // Model roles (D3): an unset interview slot takes the everyday role.
   // The Requirements model: the default harness's own slot or role first (Codex in this fork), then Claude's.
   interviewSlot: () => {
-    const onDefault = DEFAULT_ENGINE !== 'claude' && HELPER_ENGINES.includes(DEFAULT_ENGINE)
-      ? withRole(utilityModelFor(DEFAULT_ENGINE, 'requirementsInterview'), DEFAULT_ENGINE, 'requirementsInterview') : null;
-    return onDefault && onDefault.model ? onDefault : withRole(utilityModelFor('claude', 'requirementsInterview'), 'claude', 'requirementsInterview');
+    // A stored pick always wins over a role (the role resolver's own rule): the default harness's slot, then Claude's
+    // slot, then the default harness's role, then Claude's.
+    const other = DEFAULT_ENGINE !== 'claude' && HELPER_ENGINES.includes(DEFAULT_ENGINE) ? DEFAULT_ENGINE : null;
+    const own = other ? utilityModelFor(other, 'requirementsInterview') : null;
+    if (own && own.model) return own;
+    const claudeOwn = utilityModelFor('claude', 'requirementsInterview');
+    if (claudeOwn && claudeOwn.model) return claudeOwn;
+    const role = other ? withRole(own, other, 'requirementsInterview') : null;
+    return role && role.model ? role : withRole(claudeOwn, 'claude', 'requirementsInterview');
   },
 });
 
@@ -283,6 +289,14 @@ export function interviewCallOptions(kind, args = {}, { keepUserSettings = false
  * only (engines/claude-events.mjs), so a read can check that the guard decided every tool call the stream shows.
  * A failed call throws with the money already spent on it as `costUsd`.
  */
+function looksBinary(path) {
+  try {
+    const fd = openSync(path, 'r');
+    try { const buf = Buffer.alloc(8192); const n = readSync(fd, buf, 0, buf.length, 0); return buf.subarray(0, n).includes(0); }
+    finally { closeSync(fd); }
+  } catch { return false; }
+}
+
 export async function callModel(d, { kind, cwd, prompt, model, timeoutMs, signal = null, ...overrides }) {
   // Read per call, so a changed user settings file applies without a restart (D6).
   const keepUserSettings = !!(d.userSignIn || DEFAULTS.userSignIn)();
@@ -306,7 +320,8 @@ export async function callModel(d, { kind, cwd, prompt, model, timeoutMs, signal
   // tools looks through worca's own read_file / grep / glob, rooted at the one folder the call may see: the repo
   // for a look, the private folder that holds only the copy for a guarded file read. That confinement stands in for
   // the file-read guard, which is a Claude Code hook (`confinedRead` on the result; attachment-job.mjs guardCovered).
-  const engine = (d.engineOfModel || helperEngineOfModel)(model);
+  // worca's file tools read text only: a binary attachment (an image, most PDFs) is read by Claude Code as before.
+  const engine = options.readGuard && looksBinary(options.readGuard) ? null : (d.engineOfModel || helperEngineOfModel)(model);
   let mcpConfigPath = null;
   try {
     if (engine) {

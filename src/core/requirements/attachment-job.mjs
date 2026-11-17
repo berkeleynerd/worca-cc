@@ -186,7 +186,8 @@ async function promptContext(owner, d) {
  *  reply that took more than one turn while the stream shows no tool call, cannot be checked, so it does not count. */
 function guardCovered(r) {
   // Another harness (Codex): no shell, and its only file tools are rooted at the private folder holding the copy.
-  if (typeof r.confinedRead === 'string' && r.confinedRead) return true;
+  // The read counts only when the stream shows a tool call: a reply written without opening the file is discarded.
+  if (typeof r.confinedRead === 'string' && r.confinedRead) return toolCalls(Array.isArray(r.events) ? r.events : []).length > 0;
   if (!Array.isArray(r.readGuardDecisions)) return false;
   const events = Array.isArray(r.events) ? r.events : [];
   const results = events.filter((x) => x && x.type === 'result');

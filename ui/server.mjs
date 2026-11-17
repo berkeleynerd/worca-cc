@@ -7770,6 +7770,9 @@ function refuseNonClaudeUtilityModel(key, value) {
   const id = typeof value === 'string' ? value.trim()
     : (value && typeof value === 'object' ? String(value.model ?? value.scanModel ?? '').trim() : '');
   const harnesses = id ? enginesOfModel(id) : null;   // null: no catalog knows the id — allowed, as today
+  // These jobs run on the harness of their model (title.mjs helperEngineOfModel), so a Codex model is a valid pick.
+  const onOwnHarness = ['titleModel', 'memoryDefrag', 'agentGenModel', 'namingModel', 'commandSummaryModel', 'workspaceScan', 'requirementsInterview'].includes(key);
+  if (harnesses && onOwnHarness && harnesses.some((h) => h !== 'claude' && HELPER_ENGINES.includes(h))) return;
   if (harnesses && !harnesses.includes('claude')) throw new Error(`${key}: "${id}" runs on ${harnesses.map(engineLabel).join(' or ')}. This setting picks a model Claude Code can run`);
 }
 
