@@ -70,7 +70,7 @@ export const DETECT_CHECKS = Object.freeze([
     // Claude Code is one harness among several here (Codex is the default): missing or signed out is a note, not a failure.
     !c.ready ? ['warn', `${c.hint ? userLine(c.hint, 'Claude Code') : 'Claude Code was not found on this machine.'} Runs and chats on Codex do not need it.`]
       : c.auth === 'signed-in' ? ['ok', 'Claude Code is installed and signed in.']
-        : c.auth === 'signed-out' ? ['warn', `${CLAUDE_SIGNED_OUT_HINT} Runs and chats on Codex do not need it.`]
+        : c.auth === 'signed-out' ? ['warn', `${CLAUDE_SIGNED_OUT_HINT}. Runs and chats on Codex do not need it.`]
           : ['warn', "Claude Code is installed. Worca couldn't tell whether it is signed in."] },
   { id: 'git', label: 'Git', run: (p) => p.git(), read: (g) =>
     g.available ? ['ok', g.version ? `Git ${g.version} is installed.` : 'Git is installed.']
