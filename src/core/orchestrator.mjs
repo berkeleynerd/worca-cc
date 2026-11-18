@@ -87,13 +87,48 @@ const MAX_QUESTION_ROUNDS = 3;
  *  command and the API, or the question card's one answer naming a choice). Anything else leaves the ask open. */
 export const APPROVAL_ASK_KIND = 'approval';
 export const APPROVAL_CHOICES = Object.freeze({ approve: 'Approve', stop: 'Stop the run' });
-export const approvalAnswer = (raw, choices = APPROVAL_CHOICES) => {
-  if (raw && (raw.decision === 'approve' || raw.decision === 'stop')) return { decision: raw.decision };
-  const choice = raw && Array.isArray(raw.answers) && raw.answers.length === 1 ? String(raw.answers[0]?.choice ?? '').trim() : '';
-  if (choice === choices.approve) return { decision: 'approve' };
+export const approvalAnswer = (raw, choices = APPROVAL_CHOICES, extra = []) => {
+  // A gate with questions of its own (`config.approve.questionsPort`) is approved only with every one of them
+  // answered by one of its options, so a bare {decision: 'approve'} (the CLI command) leaves it open. Stop needs none.
+  if (raw && raw.decision === 'stop') return { decision: 'stop' };
+  if (raw && raw.decision === 'approve' && !extra.length) return { decision: 'approve' };
+  const list = raw && Array.isArray(raw.answers) ? raw.answers : [];
+  const pick = (id) => String(list.find((a) => a && a.id === id)?.choice ?? '').trim();
+  const choice = extra.length ? pick('approval') : (list.length === 1 ? String(list[0]?.choice ?? '').trim() : '');
   if (choice === choices.stop) return { decision: 'stop' };
-  return null;
+  if (choice !== choices.approve) return null;
+  const answers = [];
+  for (const q of extra) {
+    const c = pick(q.id);
+    if (!q.options.includes(c)) return null;
+    answers.push({ id: q.id, question: q.question, choice: c });
+  }
+  return extra.length ? { decision: 'approve', answers } : { decision: 'approve' };
 };
+/** A gate's own questions: `config.approve.questionsPort` names a json output of the node holding a list (bare, or
+ *  under `questions` or `decisions`) of {id, question, options: [2 to 4 strings]}; an item without `options` may
+ *  give `recommended` and `otherwise` instead. Each is asked on the card before the approval itself and must be
+ *  answered to approve. Malformed items are dropped; a missing or unreadable file means no questions. */
+export const APPROVAL_QUESTIONS_MAX = 6;
+export async function approvalQuestions(approve, outputs, heldFile) {
+  const port = typeof approve?.questionsPort === 'string' ? approve.questionsPort : '';
+  const name = port && heldFile ? (outputs || []).find((o) => o && o.id === port)?.filename : '';
+  if (!name || /[{}/\\]/.test(name)) return [];
+  let doc;
+  try { doc = JSON.parse(await readFile(join(dirname(heldFile), name), 'utf8')); } catch { return []; }
+  const list = Array.isArray(doc) ? doc : Array.isArray(doc?.questions) ? doc.questions : Array.isArray(doc?.decisions) ? doc.decisions : [];
+  const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : '');
+  const out = [];
+  for (const it of list) {
+    const id = text(it?.id, 60), question = text(it?.question, 600);
+    const raw = Array.isArray(it?.options) ? it.options : [it?.recommended, it?.otherwise];
+    const options = [...new Set(raw.map((o) => text(o, 400)).filter(Boolean))];
+    if (!id || id === 'approval' || !question || options.length < 2 || options.length > 4 || out.some((q) => q.id === id)) continue;
+    out.push({ id, question, options });
+    if (out.length === APPROVAL_QUESTIONS_MAX) break;
+  }
+  return out;
+}
 /** A gate's own wording (`config.approve`: question, approveLabel, stopLabel), else the defaults. */
 export const approvalWording = (approve, label, file) => {
   const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
@@ -1349,18 +1384,39 @@ export class GraphOrchestrator extends RunHarness {
     const file = q.approval?.file || null;
     const approve = nc?.config?.approve || null;
     const { choices, question } = approvalWording(approve, label, file);
-    const validate = (raw) => approvalAnswer(raw, choices);
-    const questions = [{ id: 'approval', allowFreeText: false, question, options: [choices.approve, choices.stop] }];
+    let extra = [];   // the gate's own questions, read from the node's output when the ask is raised
+    const validate = (raw) => {
+      const v = approvalAnswer(raw, choices, extra);
+      if (v || !extra.length || !(raw && Array.isArray(raw.answers))) return v;
+      // The card was submitted to approve with a question of the gate's own unanswered: refuse it as a form refuses
+      // a field (422), so the card stays up with what was chosen. A silent "ignored" would take the card away.
+      const pick = (id) => String(raw.answers.find((a) => a && a.id === id)?.choice ?? '').trim();
+      if (pick('approval') !== choices.approve) return null;
+      return { ok: false, errors: extra.filter((x) => !x.options.includes(pick(x.id)))
+        .map((x) => ({ path: x.id, code: 'required', message: 'Answer this question to approve.' })) };
+    };
     return this._enqueueAsk(async () => {
-      const summary = await approvalSummary(approve, nc?.meta?.outputs || nc?.outputs, file, q.approval?.port);
+      const outs = nc?.meta?.outputs || nc?.outputs;
+      extra = await approvalQuestions(approve, outs, file);
+      const questions = [...extra.map((x) => ({ id: x.id, allowFreeText: false, question: x.question, options: x.options })),
+        { id: 'approval', allowFreeText: false, question, options: [choices.approve, choices.stop] }];
+      const summary = await approvalSummary(approve, outs, file, q.approval?.port);
       return this._ask({ id: q.id, kind: APPROVAL_ASK_KIND, nodeId: q.nodeId, executionId: q.executionId,
         questions, approval: { ...q.approval, ...(summary ? { summary } : {}),
-          documents: approvalDocuments(approve, nc?.meta?.outputs || nc?.outputs, file, q.approval?.port) }, agent: label, validate });
+          documents: approvalDocuments(approve, outs, file, q.approval?.port) }, agent: label, validate });
     }).then(
       async (payload) => {
-        const decision = validate(payload)?.decision ?? null;
+        // answer() hands over what validate returned: the verdict itself. Never validate it a second time.
+        const verdict = payload && typeof payload.decision === 'string' ? payload : approvalAnswer(payload, choices, extra);
+        const decision = verdict?.decision ?? null;
         const by = this.answeredBy(q.id);
-        await appendAudit(this.pipeline.dir, `Approval of ${label}${file ? ` (${file})` : ''}: **${decision || 'no answer'}**${byActor(by)}.`, { actor: by }).catch(() => {});
+        const said = (verdict?.answers || []).map((x) => ` ${x.id}: "${x.choice}".`).join('');
+        await appendAudit(this.pipeline.dir, `Approval of ${label}${file ? ` (${file})` : ''}: **${decision || 'no answer'}**${byActor(by)}.${said}`, { actor: by }).catch(() => {});
+        // The answers go to the next step as a file beside the held one: approval-answers-<node>.json.
+        if (decision === 'approve' && verdict.answers && file) {
+          await writeFile(join(dirname(file), `approval-answers-${q.nodeId}.json`),
+            JSON.stringify({ node: q.nodeId, at: new Date().toISOString(), by: by || null, answers: verdict.answers }, null, 1)).catch(() => {});
+        }
         if (decision === 'approve') return { decision: 'approve' };
         this._log('orchestrator', 'info', `approval ${q.id}: stop`);
         this.stop(by);

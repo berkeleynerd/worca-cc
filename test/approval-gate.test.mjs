@@ -103,3 +103,29 @@ test('a gate links its full documents: the held file first, then the named ports
     [{ port: 'report', relPath: 'report.md' }, { port: 'issues', relPath: 'issues.json' }]);
   assert.deepEqual(approvalDocuments({ documentPorts: ['issues'] }, outs, null, 'report'), [{ port: 'issues', relPath: 'issues.json' }]);
 });
+
+test('a gate with its own questions is approved only with each answered by one of its options', async () => {
+  const { approvalQuestions } = await import('../src/core/orchestrator.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'gate-q-'));
+  await writeFile(join(dir, 'held.md'), 'x');
+  await writeFile(join(dir, 'q.json'), JSON.stringify({ decisions: [
+    { id: 'where', question: 'Where is it recorded?', recommended: 'Both records', otherwise: 'The issue alone' },
+    { id: 'bad', question: 'One option only', options: ['a'] },
+    { id: 'approval', question: 'Reserved id', options: ['a', 'b'] },
+    { id: 'three', question: 'Pick', options: ['a', 'b', 'c'] }] }));
+  const outs = [{ id: 'q', type: 'json', filename: 'q.json' }];
+  const extra = await approvalQuestions({ questionsPort: 'q' }, outs, join(dir, 'held.md'));
+  assert.deepEqual(extra.map((x) => [x.id, x.options]), [['where', ['Both records', 'The issue alone']], ['three', ['a', 'b', 'c']]]);
+  assert.deepEqual(await approvalQuestions({ questionsPort: 'missing' }, outs, join(dir, 'held.md')), []);
+  const A = APPROVAL_CHOICES.approve;
+  // The bare decision (the CLI command) and a partial answer leave the ask open; Stop needs no answers.
+  assert.equal(approvalAnswer({ decision: 'approve' }, APPROVAL_CHOICES, extra), null);
+  assert.equal(approvalAnswer({ answers: [{ id: 'approval', choice: A }, { id: 'where', choice: 'Both records' }] }, APPROVAL_CHOICES, extra), null);
+  assert.equal(approvalAnswer({ answers: [{ id: 'approval', choice: A }, { id: 'where', choice: 'something else' }, { id: 'three', choice: 'b' }] }, APPROVAL_CHOICES, extra), null);
+  assert.deepEqual(approvalAnswer({ decision: 'stop' }, APPROVAL_CHOICES, extra), { decision: 'stop' });
+  assert.deepEqual(approvalAnswer({ answers: [{ id: 'approval', choice: APPROVAL_CHOICES.stop }] }, APPROVAL_CHOICES, extra), { decision: 'stop' });
+  const ok = approvalAnswer({ answers: [{ id: 'three', choice: 'b' }, { id: 'where', choice: 'The issue alone' }, { id: 'approval', choice: A }] }, APPROVAL_CHOICES, extra);
+  assert.equal(ok.decision, 'approve');
+  assert.deepEqual(ok.answers.map((x) => [x.id, x.choice]), [['where', 'The issue alone'], ['three', 'b']]);
+  await rm(dir, { recursive: true, force: true });
+});

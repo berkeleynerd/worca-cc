@@ -36,3 +36,17 @@ stop for a person only when it fails: wire the clean and the blocking output int
 gate on the blocking one, and the run goes on untouched when the script is clean.
 
 A finished run that changed no file offers neither Create PR nor Try it: there is nothing to ship or check out.
+
+## Questions on the card
+
+A gate can put its own questions to the approver. `config.approve.questionsPort` names a json output of the same
+node holding a list (bare, or under `questions` or `decisions`) of `{id, question, options}` with two to four
+options; an item may give `recommended` and `otherwise` in place of `options`. At most six are asked. Each appears
+on the card as a question of its own, above the approval question.
+
+- The card cannot be approved until every one is answered: a submit that approves with a question unanswered is
+  refused and the card stays up. The command-line `worca approve` cannot answer them, so it leaves such a gate open.
+  Stopping the run needs no answers.
+- On approval the answers are written beside the held file as `approval-answers-<node id>.json`
+  (`{node, at, by, answers: [{id, question, choice}]}`) for the next step to read, and to the run's audit log.
+

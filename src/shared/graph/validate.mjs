@@ -623,7 +623,7 @@ export const RULES = [
         // The gate's own wording (all optional): the card's question, its two button labels, and an output port of
         // this node whose text is shown on the card as the summary to decide from.
         if (isObject(approve)) {
-          for (const f of ['question', 'approveLabel', 'stopLabel', 'summaryPort']) {
+          for (const f of ['question', 'approveLabel', 'stopLabel', 'summaryPort', 'questionsPort']) {
             if (approve[f] !== undefined && (typeof approve[f] !== 'string' || !approve[f].trim() || approve[f].length > 400)) {
               add(`node '${n.id}' config.approve.${f} must be a non-empty string of at most 400 characters`, { nodeId: n.id });
             }
@@ -642,6 +642,9 @@ export const RULES = [
                 }
               }
             }
+          }
+          if (typeof approve.questionsPort === 'string' && metaOf(n.id) && !outputsOf(n.id).some((p) => p && p.id === approve.questionsPort && p.type === 'json')) {
+            add(`node '${n.id}' config.approve.questionsPort '${approve.questionsPort}' is not a json output of this node`, { nodeId: n.id });
           }
           if (typeof approve.summaryPort === 'string' && metaOf(n.id) && !outputsOf(n.id).some((p) => p && p.id === approve.summaryPort && p.type === 'md')) {
             add(`node '${n.id}' config.approve.summaryPort '${approve.summaryPort}' is not an md output of this node`, { nodeId: n.id });
