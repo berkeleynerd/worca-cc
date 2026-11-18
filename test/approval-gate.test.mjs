@@ -68,6 +68,8 @@ test('a gate summary is the text of the summary port\'s file beside the held fil
     const held = join(dir, 'report.md');
     assert.equal(await approvalSummary({ summaryPort: 'brief' }, outs, held, 'report'), 'Recommend: post.');
     assert.equal(await approvalSummary({ summaryPort: 'report' }, outs, held, 'report'), 'the report');
+    await writeFile(join(dir, 'hdr.md'), 'AUTH_ROOT=/x/y\nRUN_2=a\n\nRead this.\nKEY=kept in the body\n');
+    assert.equal(await approvalSummary({ summaryPort: 'hdr' }, [...outs, { id: 'hdr', filename: 'hdr.md' }], held, 'report'), 'Read this.\nKEY=kept in the body');
     const long = await approvalSummary({ summaryPort: 'long' }, outs, held, 'report');
     assert.ok(long.length < APPROVAL_SUMMARY_MAX + 40 && long.endsWith('[cut: the file is longer]'));
     for (const port of ['gone', 'tpl', 'up', 'nope']) assert.equal(await approvalSummary({ summaryPort: port }, outs, held, 'report'), '', port);

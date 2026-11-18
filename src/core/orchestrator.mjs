@@ -126,7 +126,8 @@ export async function approvalSummary(approve, outputs, heldFile, heldPort) {
   const name = port === heldPort ? basename(heldFile) : (outputs || []).find((o) => o && o.id === port)?.filename;
   if (!name || /[{}/\\]/.test(name)) return '';
   try {
-    const text = (await readFile(join(dirname(heldFile), name), 'utf8')).trim();
+    // Leading `NAME=value` lines are routing headers for the next step, not reading for the approver.
+    const text = (await readFile(join(dirname(heldFile), name), 'utf8')).replace(/^(?:[A-Z][A-Z0-9_]*=\S*[ \t]*\r?\n)+/, '').trim();
     return text.length > APPROVAL_SUMMARY_MAX ? `${text.slice(0, APPROVAL_SUMMARY_MAX)}\n[cut: the file is longer]` : text;
   } catch { return ''; }
 }

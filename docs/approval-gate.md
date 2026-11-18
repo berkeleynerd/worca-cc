@@ -28,7 +28,7 @@ All optional, beside `kind` and `port`:
 | --- | --- |
 | `question` | The card's question, in place of "<step> is waiting for your approval…". |
 | `approveLabel`, `stopLabel` | The two buttons, in place of "Approve" and "Stop the run". They must differ. An answer must name the gate's own label; `worca approve` and `{decision}` work as before. |
-| `summaryPort` | An md output of the same node. Its text is shown on the card above the question (plain text, as written, up to 8,000 characters), and printed before the terminal prompt. It may be the held port itself. |
+| `summaryPort` | An md output of the same node. Its text is shown on the card above the question (plain text, as written, up to 8,000 characters), and printed before the terminal prompt. It may be the held port itself. Leading lines of the form `NAME=value` (an upper-case name, no spaces in the value) are treated as routing headers for the next step and left off the card; the full document still shows them. |
 | `documentPorts` | Up to six further file outputs of the same node. The card shows a button for the held file and for each of these; a click opens the full document in the artifact viewer, so nothing a person approves has to be read outside the page. |
 
 A script node may carry the gate too. With a verdict and an output marked `when: blocking`, a script can
