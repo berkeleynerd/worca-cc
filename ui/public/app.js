@@ -33860,6 +33860,7 @@ const histRun = (p, st = null) => ({ status: String((p && p.status) || (st && st
   ...(memberPrsOf(p).length ? { memberPrs: memberPrsOf(p) } : {}),
   // D24: passed through for the model; the saved state's branch carries a round marker on a frozen row.
   round: (p && p.round) || null, branch: (st && st.branch) || null, watch: (p && p.watch) || null,
+  ...(histNoChanges(p) ? { noChanges: true } : {}),
   // An interrupted run that can never resume (no resume point, its project gone): the model offers Archive instead.
   ...((p && p.resumable === false) || (st && st.resumable === false) ? { resumable: false } : {}),
   // Projects, any way: a Folder run's changes and a run without a project word the finished line; no git here, no git chrome.
@@ -36014,8 +36015,9 @@ function rdModelRun(r) {
   const watch = (h && h.watch) || r.watch || null;       // D24: the Watch PR fact, when the History row carries it
   const memberPrs = memberPrsOf(h);                      // #784: a workspace run's member PRs roll into the chip
   const inBase = (h && h.inBase) || null;                // D8: the work is already in its base (History, local refs)
-  return pr || watch || memberPrs.length || inBase
-    ? { ...base, ...(pr ? { pr } : {}), ...(watch ? { watch } : {}), ...(memberPrs.length ? { memberPrs } : {}), ...(inBase ? { inBase } : {}) } : base;
+  const noChanges = histNoChanges(h);                    // nothing changed in the project: Finished, never Ready to ship
+  return pr || watch || memberPrs.length || inBase || noChanges
+    ? { ...base, ...(pr ? { pr } : {}), ...(watch ? { watch } : {}), ...(memberPrs.length ? { memberPrs } : {}), ...(inBase ? { inBase } : {}), ...(noChanges ? { noChanges: true } : {}) } : base;
 }
 const rdModel = (r) => runModel(rdModelRun(r), { memo: memoFor(r.pipelineId || r.runId) });
 /** `r` is the live run from `runs` (never paintRdGlance's rdGlanceRun display copy), so the memo and the PR lookup

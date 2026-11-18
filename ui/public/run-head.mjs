@@ -99,6 +99,8 @@ export function headModel(f) {
   if (m.state === 'failed') return { ...NONE, key: 'failed', status: failed ? { line: failed } : null, after: report };
   if (m.state === 'stopped') return { ...NONE, key: 'stopped' };
   if (!f.gitChrome) return NONE;
+  // A git run that changed no file in its project: one quiet line, no ship button (run-model.mjs finishedWords).
+  if (m.state === 'ready' && m.word === 'Finished' && f.mode !== 'folder') return { ...NONE, key: 'finished', status: { line: m.line } };
   if (f.workspace) return workspaceHead(f);
   // D2: the merged / ready / closed lines say where the work lands; conflicts are with the PR's real base.
   const base = landingOf(f) || 'the base branch';
@@ -404,6 +406,7 @@ export function routeModel(f) {
   if (!st || st === 'waiting' || (st === 'stopped' && !f.kept)) return null;
   if (f.mode === 'folder') return folderRoute(f);
   if (f.mode === 'none' || !f.gitChrome) return null;
+  if (st === 'ready' && f.m.word === 'Finished') return null;   // no file changed: no branch, pull request or landing to show
   if (f.workspace) return workspaceRoute(f);
   if (f.push || f.notMergedBack) return pushRoute(f);
   return prRoute(f);

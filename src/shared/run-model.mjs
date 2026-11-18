@@ -279,7 +279,10 @@ function finishedWords(r, mode) {
     const word = total === 0 ? 'Finished' : c && c.state === 'applied' ? 'Applied' : c && c.state === 'discarded' ? 'Discarded' : 'Finished';
     return { word, line: join(word, total == null ? '' : total === 0 ? 'no files changed' : `${plural(total, 'file')} changed`) };
   }
-  return mode === 'none' || r.gitChrome === false ? { word: 'Finished', line: 'Finished' } : null;
+  if (mode === 'none' || r.gitChrome === false) return { word: 'Finished', line: 'Finished' };
+  // A git run whose recorded diff is empty (a workflow that works outside its project, or one that only reports):
+  // there is no branch to ship and no pull request to open here, so it never reads "Ready to ship".
+  return r.noChanges === true && !r.pr ? { word: 'Finished', line: 'Finished · no files changed in this project' } : null;
 }
 
 /**
