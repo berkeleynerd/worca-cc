@@ -464,3 +464,13 @@ test('barLine: beside a stage bar a working run names only its step; nodes mode,
   assert.equal(runModel(R({ stepper, steps: [row('n_defrag', 'start')], active: [live('n_defrag')] }), OPTS).barLine, null,
     'nodes mode draws no stage names, so the line stays whole');
 });
+
+test('a finished git run that changed no file reads Finished, never Ready to ship', () => {
+  const m = runModel({ status: 'done', noChanges: true, pr: null });
+  assert.equal(m.state, 'ready');
+  assert.equal(m.word, 'Finished');
+  assert.equal(m.line, 'Finished · no files changed in this project');
+  assert.deepEqual(m.actions, []);
+  // With a pull request of its own, or with changes, it ships as before.
+  assert.equal(runModel({ status: 'done', pr: null }).line, 'Ready to ship');
+});
